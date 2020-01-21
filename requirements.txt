@@ -1,0 +1,5 @@
+googletrans
+furigana
+mecab-python3
+flask
+jaconv
