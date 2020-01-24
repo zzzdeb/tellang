@@ -1,3 +1,4 @@
+from enum import Enum
 import json
 import random
 import time
@@ -13,17 +14,20 @@ from googletrans import Translator
 import telegram
 
 from config import TELEGRAM_SEND_MESSAGE_URL
-from config import MYTELID
+from config import MYTELID, ANKIPORTS
+
+from telegram.ext import (CallbackQueryHandler, CommandHandler, Filters,
+                          JobQueue, MessageHandler, Updater)
 
 
 def request(action, **params):
     return {'action': action, 'params': params, 'version': 6}
 
 
-def invoke(action, **params):
+def invoke(action, port, **params):
     requestJson = json.dumps(request(action, **params)).encode('utf-8')
     response = json.load(urllib.request.urlopen(
-        urllib.request.Request('http://localhost:8766', requestJson)))
+        urllib.request.Request('http://localhost:'+port, requestJson)))
     if len(response) != 2:
         raise Exception('response has an unexpected number of fields')
     if 'error' not in response:
@@ -34,39 +38,60 @@ def invoke(action, **params):
         raise Exception(response['error'])
     return response['result']
 
+
+class State(Enum):
+    INIT = 1
+    VOTING = 2
+    STARTED = 3
+    ENDED = 4
+
+
 class Game:
 
-    def __init__(self, telbot):
+    def __init__(self):
         """TODO: Docstring for __init__.
         :returns: TODO
 
         """
-        self.players = {'a':0}
+        self.state = State.INIT
+        self.phase = 0
+        self.players = {}
+        self.next_voted = set()
+
+        self.context = None
+        self.update = None
+
+        self.all_words = {}
         self.answers = {}
-        self.telbot = telbot
+        self.words_to_review = {}
         self.current_word = ''
         self.current_value = {}
-        self.phase = 0
-        self.threshold = 10
+
+        self.threshold = 20
         self.current_word_begin_time = dt.now()
         self.last_user_input_time = dt.now()
-        self.isOn = False
+
         k = pykakasi.kakasi()
-        k.setMode('K','a')
-        k.setMode('H','a')
-        k.setMode('J','a')
+        k.setMode('K', 'a')
+        k.setMode('H', 'a')
+        k.setMode('J', 'a')
         k.setMode('s', True)
         self.converter = k.getConverter()
         k = pykakasi.kakasi()
-        k.setMode('K','a')
-        k.setMode('H','a')
-        k.setMode('J','a')
+        k.setMode('K', 'a')
+        k.setMode('H', 'a')
+        k.setMode('J', 'a')
         k.setMode('s', False)
         self.converter1 = k.getConverter()
 
+        self.translator = Translator()
+
+        self.updater = None
+
     def next_word(self):
-        if len(self.current_word) > 0:
-            del self.answers[self.current_word]
+        self.next_voted = set()
+
+        del self.answers[self.current_word]
 
         self.phase = 0
         if len(self.answers) == 0:
@@ -74,46 +99,77 @@ class Game:
         else:
             self.current_word = random.choice(list(self.answers.keys()))
             self.current_value = self.answers[self.current_word]
+
+        # adding to users
+        if len(self.current_word) > 0:
+            for p, val in self.players.items():
+                self.players[p]['words_to_review'][self.answers[self.current_word]
+                                                   ['id']] = self.current_word
+
+            self.words_to_review[self.answers[self.current_word]
+                                 ['id']] = self.current_word
+
         self.current_word_begin_time = dt.now()
         return self.current_word
 
-    def end_game(self, announce_winner=True):
-        self.isOn = False
-        self.telbot.game_started = False
-        self.telbot.current_game_index = -1
-
-        self.telbot.outgoing_message_text = ''
-        if announce_winner:
-            self.telbot.outgoing_message_text = 'Winner: '+max(self.players, key=self.players.get) + '🎆\n'
-        self.telbot.outgoing_message_text += 'END'
-        self.telbot.send_message()
+    def add_player(self, update, context):
+        user = update.effective_user
+        if user.id in self.players:
+            return 1
+        self.players[user.id] = {'fn': user.first_name, 'ln': user.last_name,
+                                 'words_to_review': {},
+                                 'points': 0}
+        try:
+            self.players[user.id]['ankiport'] = ANKIPORTS[user.id]
+        except KeyError:
+            pass
         return 0
 
+    def end_game(self):
+        self.state = State.ENDED
+        return 0
+
+    def winner_str(self):
+        winner = self.players[max(
+            self.players, key=lambda x: self.players[x]['points'])]
+        text = 'Winner: {}, {}  🎆🎆🎆'.format(winner['fn'], winner['ln'])
+        return text
+
     def check_if_game_done(self):
-        return self.current_word == '' or (max(list(self.players.values())) if len(self.players) else 0) >= self.threshold
+        return self.current_word == '' or (max(list([a['points'] for a in self.players.values()])) if len(self.players) else 0) >= self.threshold
+
+    def status(self):
+        text = ''
+        for v in self.players.values():
+            text += '{}, {}: {}, '.format(v['fn'], v['ln'], v['points'])
+        return text[:-2]
 
     def timer(self):
-        while(self.isOn):
-            delta = dt.now()- self.current_word_begin_time
-            if delta.seconds > 0 and self.phase ==0:
+        while(self.state == State.STARTED):
+            delta = dt.now() - self.current_word_begin_time
+            if delta.seconds > 0 and self.phase == 0:
                 hiragana = re.sub(r'\[[^]]*\]', '', self.current_word)
-                self.telbot.outgoing_message_text = str(self.players)+'\n Next word: '+hiragana
-                self.telbot.send_message()
-                self.phase = 1 if (self.answers[self.current_word]['type'] == 'Recognition' and not self.current_word == self.answers[self.current_word]['Reading']) else 2
-            if delta.seconds > 8 and self.phase ==1:
-                self.telbot.outgoing_message_text = self.answers[self.current_word]['Reading']
-                self.telbot.send_message()
+
+                #  str(self.players)+'\n *'+hiragana+'*'
+                self.context.bot.send_message(chat_id=self.update.effective_chat.id,
+                                              text='{}\n*{}*'.format(
+                                                  self.status(), hiragana),
+                                              parse_mode=telegram.ParseMode.MARKDOWN)
+                self.phase = 1 if (self.answers[self.current_word]['type'] ==
+                                   'Recognition' and not self.current_word == self.answers[self.current_word]['Reading']) else 2
+            if delta.seconds > 8 and self.phase == 1:
+                self.context.bot.send_message(chat_id=self.update.effective_chat.id,
+                                              text=self.answers[self.current_word]['Reading'])
                 self.phase = 2
             if delta.seconds > 20:
                 text = self.answer_str()
-                self.telbot.outgoing_message_text = text
-                self.telbot.send_message()
+                self.context.bot.send_message(chat_id=self.update.effective_chat.id,
+                                              text=text)
 
                 self.next_word()
 
                 if self.check_if_game_done():
-                    self.telbot.outgoing_message_text = self.end_game()
-                    self.telbot.send_message()
+                    self.end_game()
 
             time.sleep(0.1)
         return
@@ -131,36 +187,55 @@ class Game:
         ansval = self.answers[self.current_word]
         answers = []
         if ansval['type'] == 'Recognition':
-            answers = [re.sub(r'\([^)]*\)', '', a).strip().lower() for a in ansval['Meaning'].replace(',',';').replace('...', '').split(';')]
+            answers = [re.sub(r'\([^)]*\)', '', a).strip().lower()
+                       for a in ansval['Meaning'].replace(',', ';').replace('...', '').split(';')]
         elif ansval['type'] == 'Recall':
-            answers.append(self.converter1.do(ansval['Expression']))
+            answers = [re.sub(r'\([^)]*\)', '', a).strip().lower()
+                       for a in ansval['Expression'].replace(',', ';').replace('...', '').split(';')]
+            answers += [self.converter1.do(v) for v in answers]
+            print(answers)
         return ans in answers
 
-
-    def answer_str(self):
+    def answer_str(self, word=''):
         """TODO: Docstring for print_answer.
         :returns: TODO
 
         """
+        w = word if not word == '' else self.current_word
 
         text = ''
-        if self.answers[self.current_word]['type'] == 'Recognition':
-            text = self.current_word +' : '+self.answers[self.current_word]['Meaning']
-        elif self.answers[self.current_word]['type'] == 'Recall':
-            text = '%s : %s (%s)' % (self.current_word, self.answers[self.current_word]['Expression'], self.converter1.do(self.answers[self.current_word]['Expression']))
+        if self.all_words[w]['type'] == 'Recognition':
+            text = w + ' : '+self.all_words[w]['Meaning']
+        elif self.all_words[w]['type'] == 'Recall':
+            text = '%s : %s (%s)' % (w, self.all_words[w]['Expression'], self.converter1.do(
+                self.all_words[w]['Expression']))
         return text
 
+    def start(self):
+        if self.state == State.INIT:
+            self.state = State.STARTED
 
-    def run(self, telbot):
+            result = None
+            for val in self.players.values():
+                try:
+                    #  print(val['fn'])
+                    val['ankiCards'] = invoke(
+                        'findCards', val['ankiport'], query='"deck:Nihongo::Genki 1 & 2, Incl Genki 1 Supplementary Vocab" prop:due<1')
+                    #  print(val['ankiCards'])
+                    if result == None:
+                        result = set(val['ankiCards'])
+                    else:
+                        result = result & set(val['ankiCards'])
+                except KeyError:
+                    print('KeyError')
+                    pass
 
-        if telbot.incoming_message_text.startswith('/p'):
-            self.isOn = True
-            self.players = {'a':0}
-            result = invoke('findCards', query='"deck:Nihongo::Genki 1 & 2, Incl Genki 1 Supplementary Vocab" prop:due<1')
+            result = list(result)
+
             # print(result)
-            for a in invoke('cardsInfo', cards=result):
+            for a in invoke('cardsInfo', self.players[MYTELID]['ankiport'], cards=result):
                 value = {}
-                value['id'] = a['cardId']
+                value['id'] = int(a['cardId'])
                 if a['template']['name'] == 'Recall':
                     value['type'] = 'Recall'
                     value['Reading'] = a['fields']['Reading']['value']
@@ -172,178 +247,57 @@ class Game:
                     value['Reading'] = a['fields']['Reading']['value']
                     self.answers[a['fields']['Expression']['value']] = value
 
-            #  self.answers = {'August':'August', 'Sep':'Sep , Okt; Mit ...'}
+            #  self.answers = {'August':{'type':'Recall', 'Reading':'Aug', 'Expression': 'aug'}, 'Sep':{'type':'Recall', 'Reading':'Aug', 'Expression': 'aug'}}
+            #  self.answers = {'August':{'type':'Recall', 'Reading':'Aug', 'Expression': 'aug'}, 'Sep':'Sep , Okt; Mit ...'}
             #  self.answers= {'（〜を）おねがいします' :'..., please.'}
-            #  self.telbot.outgoing_message_text = str(self.answers)
-            #  self.telbot.send_message()
+            self.all_words = self.answers.copy()
             self.next_word()
-
             thread = threading.Thread(target=self.timer)
             thread.start()
-            return 0
 
-        if self.telbot.incoming_message_text.startswith('/a'):
-            if self.is_right_answer(self.telbot.incoming_message_text):
-                playerstr = telbot.first_name + ', ' + telbot.last_name
-                try:
-                    self.players[playerstr] += 1
-                except KeyError:
-                    self.players[playerstr] = 1
+        elif self.state == State.STARTED:
+            self.context.bot.send_message(chat_id=self.update.effective_chat.id,
+                                          text="Game running")
+        return 0
 
-                if self.telbot.from_id == MYTELID:
-                    invoke('answerCard', cid=self.current_value['id'])
-                else:
-                    print('not zzz')
+    def vote_next(self, player_id):
+        self.next_voted.add(player_id)
+        if(len(self.next_voted) == len(self.players)):
+            self.next_word()
+            if self.check_if_game_done():
+                self.end_game()
+            return True
+        else:
+            return False
 
-                self.next_word()
-                if self.check_if_game_done():
-                    return self.end_game()
+    def anki_answer(self, pid, cid):
+        if 'ankiport' in self.players[pid]:
+            if invoke('areDue', self.players[pid]['ankiport'], cards=[cid])[0]:
+                print('Answering {}:{}'.format(
+                    self.players[pid]['words_to_review'][cid], cid))
+                invoke('answerCard', self.players[pid]
+                       ['ankiport'], cid=cid)
+                del self.players[pid]['words_to_review'][cid]
+            else:
+                print('Not Due so not answering {}:{}'.format(
+                    self.players[pid]['words_to_review'][cid], cid))
+        else:
+            print('Player not anki {}:{}'.format(
+                self.players[pid]['words_to_review'][cid], cid))
 
-                #  self.telbot.outgoing_message_text = str(self.players)
-                #  self.telbot.send_message()
-            return 0
-
-        if telbot.incoming_message_text == '/n':
-            text = self.answer_str()
+    def answer(self, player_id, answer):
+        if self.is_right_answer(answer):
+            self.players[player_id]['points'] += 1
+            if 'ankiport' in self.players[player_id]:
+                self.anki_answer(player_id, self.current_value['id'])
+            else:
+                del self.players[player_id]['words_to_review'][self.current_value['id']]
 
             self.next_word()
             if self.check_if_game_done():
-                return self.end_game()
-
-            self.telbot.outgoing_message_text = text #+ '\n' + str(self.players)+'\n Next word: '+self.current_word
-            self.telbot.send_message()
+                self.end_game()
+            return 1
+        else:
             return 0
 
-        if telbot.incoming_message_text == '/q':
-            self.telbot.outgoing_message_text = self.answer_str()
-            return self.end_game(announce_winner=False)
-
-
-
-
-
-class TelegramBot:
-
-    def __init__(self):
-        """"
-        Initializes an instance of the TelegramBot class.
-
-        Attributes:
-            chat_id:str: Chat ID of Telegram chat, used to identify which conversation outgoing messages should be send to.
-            text:str: Text of Telegram chat
-            first_name:str: First name of the user who sent the message
-            last_name:str: Last name of the user who sent the message
-        """
-
-        self.chat_id = None
-        self.text = None
-        self.first_name = None
-        self.last_name = None
-        self.translator = Translator()
-        self.current_game_index = -1
-        self.games = [Game(self)]
-        self.game_started = False
-
-
-    def parse_webhook_data(self, data):
-        """
-        Parses Telegram JSON request from webhook and sets fields for conditional actions
-
-        Args:
-            data:str: JSON string of data
-        """
-
-        try:
-            message = data['message']
-        except KeyError:
-            try:
-                message = data['edited_message']
-            except KeyError:
-                print(data)
-                raise KeyError
-
-        self.chat_id = message['chat']['id']
-        try:
-            self.incoming_message_text = message['text'].lower()
-        except KeyError:
-            self.incoming_message_text = ''
-        self.from_id = message['from']['id']
-        self.first_name = message['from']['first_name']
-        self.last_name = message['from']['last_name']
-
-
-    def action(self):
-        """
-        Conditional actions based on set webhook data.
-
-        Returns:
-            bool: True if the action was completed successfully else false
-        """
-
-        success = None
-
-        if self.incoming_message_text == '/hello':
-            self.outgoing_message_text = "Hello {} {}! Dont be mad".format(self.first_name, self.last_name)
-            success = self.send_message()
-
-        if self.incoming_message_text == '/rad':
-            self.outgoing_message_text = '🤙'
-            success = self.send_message()
-
-        if self.incoming_message_text.startswith('/t ') or self.incoming_message_text.startswith('tt '):
-            text = self.translator.translate(self.incoming_message_text[3:], dest='ja').text
-            text = text+'\n'
-            twoLines = False
-            for pair in split_furigana(text):
-                if len(pair)==2:
-                    twoLines = True
-
-            if twoLines:
-                for pair in split_furigana(text):
-                    if len(pair)==2:
-                        kanji,hira = pair
-                        text = text + "%s(%s)" % (kanji,hira)
-                    else:
-                        text = text+pair[0]
-            self.outgoing_message_text = text
-            success = self.send_message()
-
-        if self.incoming_message_text.startswith('/p'):
-            if not self.game_started:
-                self.game_started = True
-                self.current_game_index = 0
-                self.games[self.current_game_index].run(self)
-            else:
-                self.outgoing_message_text = 'Game running'
-                success = self.send_message()
-
-        if self.game_started:
-            if self.incoming_message_text.startswith('/a') or self.incoming_message_text.startswith('/n') or self.incoming_message_text.startswith('/q'):
-                self.games[self.current_game_index].run(self)
-
-        return success
-
-
-    def send_message(self):
-        """
-        Sends message to Telegram servers.
-        """
-
-        custom_keyboard = [['top-left', 'top-right'], 
-                           ['bottom-left', 'bottom-right']]
-        reply_markup = telegram.ReplyKeyboardMarkup(custom_keyboard)
-        res = requests.get(TELEGRAM_SEND_MESSAGE_URL.format(self.chat_id, self.outgoing_message_text, reply_markup))
-
-        return True if res.status_code == 200 else False
-
-
-    @staticmethod
-    def init_webhook(url):
-        """
-        Initializes the webhook
-
-        Args:
-            url:str: Provides the telegram server with a endpoint for webhook data
-        """
-
-        requests.get(url)
+        return 0
