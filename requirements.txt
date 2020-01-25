@@ -1,5 +1,7 @@
 googletrans
 furigana
+pykakasi
+telegram
 mecab-python3
-flask
 jaconv
+python-telegram-bot

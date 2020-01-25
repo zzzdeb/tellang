@@ -91,7 +91,8 @@ class Game:
     def next_word(self):
         self.next_voted = set()
 
-        del self.answers[self.current_word]
+        if self.current_word in self.answers:
+            del self.answers[self.current_word]
 
         self.phase = 0
         if len(self.answers) == 0:
