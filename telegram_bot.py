@@ -1,4 +1,7 @@
+#!/usr/bin/env python
+
 from enum import Enum
+
 import json
 import random
 import time
@@ -192,6 +195,8 @@ class Game:
                        for a in ansval['Meaning'].replace(',', ';').replace('...', '').split(';')]
         elif ansval['type'] == 'Recall':
             answers = [re.sub(r'\([^)]*\)', '', a).strip().lower()
+                       for a in ansval['Expression'].replace(',', ';').replace('...', '').split(';')]
+            answers = [re.sub(r'\（[^)]*\）', '', a).strip().lower()
                        for a in ansval['Expression'].replace(',', ';').replace('...', '').split(';')]
             answers += [self.converter1.do(v) for v in answers]
             print(answers)
