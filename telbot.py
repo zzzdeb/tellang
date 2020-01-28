@@ -1,18 +1,16 @@
 #!/usr/bin/env python
 
 import logging
-import threading
-import time
 
 from furigana.furigana import split_furigana
 from googletrans import Translator
 import telegram
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (CallbackQueryHandler, CommandHandler, Filters,
-                          JobQueue, MessageHandler, Updater, CallbackContext)
+                          MessageHandler, Updater)
 
 from config import TOKEN
-from telegram_bot import Game, State
+from game import Game, State
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
@@ -24,6 +22,7 @@ updater = Updater(TOKEN, use_context=True)
 
 def translate(update, context):
     """
+    Docstr
     """
     translator = Translator()
     text = translator.translate(' '.join(context.args), dest='ja').text
@@ -62,6 +61,9 @@ def translate(update, context):
 
 
 def unknown(update, context):
+    """
+    Docstr
+    """
     context.bot.send_message(chat_id=update.effective_chat.id,
                              text="Sorry, I didn't understand that command.")
 
@@ -95,6 +97,9 @@ GAME = Game()
 
 
 def start_timer(context):
+    """
+    Docstr
+    """
     if GAME.state == State.INIT:
         GAME.start()
 
@@ -104,6 +109,9 @@ def start_timer(context):
 
 
 def check(context):
+    """
+    Docstr
+    """
     if GAME.state == State.ENDED:
         #  for p, val in GAME.players.items():
         #  try:
@@ -127,6 +135,9 @@ def check(context):
 
 
 def start(update, context):
+    """
+    Docstr
+    """
 
     if GAME.state in [State.INIT, State.ENDED]:
         GAME.__init__()
@@ -149,6 +160,9 @@ def start(update, context):
 
 
 def answer(update, context):
+    """
+    Docstr
+    """
     GAME.answer(update.effective_user.id, update.message.text)
     if GAME.state == State.INIT:
         context.bot.send_message(chat_id=update.effective_chat.id,
@@ -157,9 +171,12 @@ def answer(update, context):
         return 1
 
 
-def end_game(update, context, announce_winner=False):
+def end_game(update, context, winner_announce=False):
+    """
+    Docstr
+    """
     text = ''
-    if announce_winner:
+    if winner_announce:
         text += GAME.winner_str() + '🎆🎆🎆\n'
     text += 'END'
     GAME.end_game()
@@ -169,10 +186,16 @@ def end_game(update, context, announce_winner=False):
 
 
 def announce_winner(update, context):
+    """
+    Docstr
+    """
     context.bot.send_message(update.effective_chat.id, text=GAME.winner_str())
 
 
 def vote_next(update, context):
+    """
+    Docstr
+    """
     text = GAME.answer_str()
     if not GAME.vote_next(update.effective_user.id):
         context.bot.send_message(
@@ -186,6 +209,9 @@ def vote_next(update, context):
 
 
 def button(update, context):
+    """
+    Docstr
+    """
     query = update.callback_query
     if query.data == BUTTON["play"]:
         if not GAME.add_player(update, context):
@@ -203,12 +229,17 @@ def button(update, context):
     elif query.data == BUTTON["review_review"]:
         GAME.anki_answer(update.effective_user.id,
                          int(query.message.text.split('::')[1]))
-        query.edit_message_text(text='_{}_'.format(query.message.text),parse_mode=telegram.ParseMode.MARKDOWN)
+        query.edit_message_text(text='_{}_'.format(
+            query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
     elif query.data == BUTTON["review_no"]:
-        query.edit_message_text(text='*{}*'.format(query.message.text),parse_mode=telegram.ParseMode.MARKDOWN)
+        query.edit_message_text(
+            text='*{}*'.format(query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
 
 
-def help(update, context):
+def bothelp(update, context):
+    """
+    Docstr
+    """
     update.message.reply_text("Use /start to test this bot.")
 
 
@@ -218,20 +249,29 @@ def error(update, context):
 
 
 def echo(context):
+    """
+    Docstr
+    """
     print(context.user_data)
 
 
 def status(update, context):
+    """
+    Docstr
+    """
     update.message.reply_text(str(update)+'\n'+str(context))
 
 
 def main():
+    """
+    Docstr
+    """
     # Create the Updater and pass it your bot's token.
     # Make sure to set use_context=True to use the new context based callbacks
     # Post version 12 this will no longer be necessary
     updater.dispatcher.add_handler(CommandHandler('start', start))
     updater.dispatcher.add_handler(CallbackQueryHandler(button))
-    updater.dispatcher.add_handler(CommandHandler('help', help))
+    updater.dispatcher.add_handler(CommandHandler('help', bothelp))
     updater.dispatcher.add_handler(MessageHandler(Filters.text, translate))
     updater.dispatcher.add_handler(CommandHandler('status', status))
     updater.dispatcher.add_handler(CommandHandler('t', translate))
