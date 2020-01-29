@@ -323,7 +323,7 @@ class Game:
 
         return False
 
-    def anki_answer(self, pid, cid):
+    def anki_answer(self, pid, cid, ease=2):
         """
         Docstring
         """
@@ -332,7 +332,7 @@ class Game:
                 print('Answering {}:{}'.format(
                     self.players[pid]['words_to_review'][cid], cid))
                 invoke('answerCard', self.players[pid]
-                       ['ankiport'], cid=cid)
+                       ['ankiport'], cid=cid, ease=ease)
                 del self.players[pid]['words_to_review'][cid]
             else:
                 print('Not Due so not answering {}:{}'.format(

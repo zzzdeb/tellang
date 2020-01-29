@@ -71,8 +71,10 @@ def unknown(update, context):
 BUTTON = {
     'play': '1',
     'vote_next': '2',
-    'review_review': '3',
-    'review_no': '4'
+    'review_1': '3',
+    'review_2': '4',
+    'review_3': '5',
+    'review_4': '6',
 }
 
 play_button = [[InlineKeyboardButton("PLAY?",
@@ -85,9 +87,15 @@ voteNext_button = [[InlineKeyboardButton("Yes",
 #  context.args
 voteNext_button_markup = InlineKeyboardMarkup(voteNext_button)
 
-review_button = [[InlineKeyboardButton("Review",
-                                       callback_data=BUTTON["review_review"]), InlineKeyboardButton("No",
-                                                                                                    callback_data=BUTTON["review_no"])]]
+review_button = [[InlineKeyboardButton("Again",
+                                       callback_data=BUTTON["review_1"]),
+                  InlineKeyboardButton("Hard",
+                                       callback_data=BUTTON["review_2"]), 
+                  InlineKeyboardButton("Normal",
+                                        callback_data=BUTTON["review_3"]), 
+                  InlineKeyboardButton("Easy",
+                                        callback_data=BUTTON["review_4"]),
+                  ]]
 #  context.args
 review_button_markup = InlineKeyboardMarkup(review_button)
 """
@@ -226,12 +234,24 @@ def button(update, context):
                 query.message.text, update.effective_user.first_name), reply_markup=play_button_markup)
         else:
             query.edit_message_text(text='Next:')
-    elif query.data == BUTTON["review_review"]:
+    elif query.data == BUTTON["review_1"]:
         GAME.anki_answer(update.effective_user.id,
-                         int(query.message.text.split('::')[1]))
+                         int(query.message.text.split('::')[1]), ease=1)
         query.edit_message_text(text='_{}_'.format(
             query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
-    elif query.data == BUTTON["review_no"]:
+    elif query.data == BUTTON["review_2"]:
+        GAME.anki_answer(update.effective_user.id,
+                         int(query.message.text.split('::')[1]), ease=2)
+        query.edit_message_text(
+            text='*{}*'.format(query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
+    elif query.data == BUTTON["review_3"]:
+        GAME.anki_answer(update.effective_user.id,
+                         int(query.message.text.split('::')[1]), ease=3)
+        query.edit_message_text(
+            text='*{}*'.format(query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
+    elif query.data == BUTTON["review_4"]:
+        GAME.anki_answer(update.effective_user.id,
+                         int(query.message.text.split('::')[1]), ease=4)
         query.edit_message_text(
             text='*{}*'.format(query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
 
