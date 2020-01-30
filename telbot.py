@@ -11,6 +11,7 @@ from telegram.ext import (CallbackQueryHandler, CommandHandler, Filters,
 
 from config import TOKEN
 from game import Game, State
+from game_kanji import KanjiGame
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
@@ -104,7 +105,7 @@ review_button_markup = InlineKeyboardMarkup(review_button)
 """
 Basic example for a bot that uses inline keyboards.
 """
-GAME = Game()
+GAME = KanjiGame()
 
 
 def start_timer(context):
@@ -174,7 +175,7 @@ def answer(update, context):
     """
     Docstr
     """
-    GAME.answer(update.effective_user.id, update.message.text)
+    GAME.answer(update.effective_user.id, ' '.join(context.args))
     if GAME.state == State.INIT:
         context.bot.send_message(chat_id=update.effective_chat.id,
                                  text=GAME.winner_str())

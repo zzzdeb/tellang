@@ -14,7 +14,7 @@ import pykakasi
 import telegram
 from googletrans import Translator
 
-from config import ANKIPORTS, MYTELID
+from config import ANKIPORTS
 
 
 def request(action, **params):
@@ -77,6 +77,8 @@ class Game:
         self.current_word_begin_time = dt.now()
         self.last_user_input_time = dt.now()
 
+        self.deckname = "Nihongo::Genki 1 & 2, Incl Genki 1 Supplementary Vocab"
+
         k = pykakasi.kakasi()
         k.setMode('K', 'a')
         k.setMode('H', 'a')
@@ -112,9 +114,9 @@ class Game:
 
         # adding to users
         if len(self.current_word) > 0:
-            for p in self.players:
-                self.players[p]['words_to_review'][self.answers[self.current_word]
-                                                   ['id']] = self.current_word
+            for player in self.players:
+                self.players[player]['words_to_review'][self.answers[self.current_word]
+                                                        ['id']] = self.current_word
 
             self.words_to_review[self.answers[self.current_word]
                                  ['id']] = self.current_word
@@ -151,10 +153,10 @@ class Game:
         for val in self.players.values():
             if 'ankiport' in val:
                 invoke('guiDeckOverview', val['ankiport'],
-                       name='Nihongo::Genki 1 & 2, Incl Genki 1 Supplementary Vocab')
+                       name=self.deckname)
                 invoke('sync', val['ankiport'])
                 invoke('guiDeckOverview', val['ankiport'],
-                       name='Nihongo::Genki 1 & 2, Incl Genki 1 Supplementary Vocab')
+                       name=self.deckname)
         return 0
 
     def winner_str(self):
@@ -220,9 +222,7 @@ class Game:
         :returns: TODO
 
         """
-        if not answer.startswith('/a '):
-            return 0
-        ans = answer[3:].lower()
+        ans = answer.lower()
         ansval = self.answers[self.current_word]
         answers = []
         if ansval['type'] == 'Recognition':
@@ -252,6 +252,28 @@ class Game:
                 self.all_words[w]['Expression']))
         return text
 
+    def prepare_answers(self, cids):
+        """
+        DocString
+        """
+        for pinfo in self.players.values():
+            if 'ankiport' in pinfo:
+                for a in invoke('cardsInfo', pinfo['ankiport'], cards=cids):
+                    value = {}
+                    value['id'] = int(a['cardId'])
+                    if a['template']['name'] == 'Recall':
+                        value['type'] = 'Recall'
+                        value['Reading'] = a['fields']['Reading']['value']
+                        value['Expression'] = a['fields']['Expression']['value']
+                        self.answers[a['fields']['Meaning']['value']] = value
+                    elif a['template']['name'] == 'Recognition':
+                        value['type'] = 'Recognition'
+                        value['Meaning'] = a['fields']['Meaning']['value']
+                        value['Reading'] = a['fields']['Reading']['value']
+                        self.answers[a['fields']
+                                     ['Expression']['value']] = value
+                return
+
     def start(self):
         """
         Docstring
@@ -264,14 +286,16 @@ class Game:
                 try:
                     # Preparing anki
                     invoke(
-                        'guiDeckOverview', val['ankiport'], name='Nihongo::Genki 1 & 2, Incl Genki 1 Supplementary Vocab')
+                        'guiDeckOverview', val['ankiport'], name=self.deckname)
                     invoke('sync', val['ankiport'])
                     invoke(
-                        'guiDeckOverview', val['ankiport'], name='Nihongo::Genki 1 & 2, Incl Genki 1 Supplementary Vocab')
+                        'guiDeckOverview', val['ankiport'], name=self.deckname)
 
                     #  print(val['fn'])
+                    query = '"deck:{}" prop:due<1'.format(self.deckname)
+                    print(query)
                     val['ankiCards'] = invoke(
-                        'findCards', val['ankiport'], query='"deck:Nihongo::Genki 1 & 2, Incl Genki 1 Supplementary Vocab" prop:due<1')
+                        'findCards', val['ankiport'], query=query)
                     #  print(val['ankiCards'])
                     if result == None:
                         result = set(val['ankiCards'])
@@ -282,35 +306,20 @@ class Game:
 
             result = list(result)
 
-            # print(result)
-            for pinfo in self.players.values():
-                if 'ankiport' in pinfo:
-                    for a in invoke('cardsInfo', pinfo['ankiport'], cards=result):
-                        value = {}
-                        value['id'] = int(a['cardId'])
-                        if a['template']['name'] == 'Recall':
-                            value['type'] = 'Recall'
-                            value['Reading'] = a['fields']['Reading']['value']
-                            value['Expression'] = a['fields']['Expression']['value']
-                            self.answers[a['fields']['Meaning']['value']] = value
-                        elif a['template']['name'] == 'Recognition':
-                            value['type'] = 'Recognition'
-                            value['Meaning'] = a['fields']['Meaning']['value']
-                            value['Reading'] = a['fields']['Reading']['value']
-                            self.answers[a['fields']['Expression']['value']] = value
-                    break
+            print(result)
+            self.prepare_answers(cids=result)
 
             #  self.answers = {'August': {'type': 'Recall', 'Reading': 'Aug', 'Expression': 'aug'}, 'Sep': {
-                #  'type': 'Recall', 'Reading': 'Aug', 'Expression': 'aug'}}
+            #  'type': 'Recall', 'Reading': 'Aug', 'Expression': 'aug'}}
             #  self.answers = {'August': {'type': 'Recall', 'Reading': 'Aug',
-                    #  'Expression': 'aug'}, 'Sep': 'Sep , Okt; Mit ...'}
+            #  'Expression': 'aug'}, 'Sep': 'Sep , Okt; Mit ...'}
             #  self.answers= {'（〜を）おねがいします' :'..., please.'}
             self.all_words = self.answers.copy()
 
             self.next_word()
             if self.check_if_game_done():
                 self.end_game()
-                
+
             thread = threading.Thread(target=self.timer)
             thread.start()
 
