@@ -122,18 +122,23 @@ class Game:
         self.current_word_begin_time = dt.now()
         return self.current_word
 
-    def add_player(self, update, context):
+    def add_player(self, user, with_anki=True):
         """
         Docstring
         """
-        user = update.effective_user
         if user.id in self.players:
+            if with_anki and (user.id in ANKIPORTS):
+                self.players[user.id]['ankiport'] = ANKIPORTS[user.id]
+            else:
+                if 'ankiport' in self.players[user.id]:
+                    del self.players[user.id]['ankiport']
             return 1
         self.players[user.id] = {'fn': user.first_name, 'ln': user.last_name,
                                  'words_to_review': {},
                                  'points': 0}
         try:
-            self.players[user.id]['ankiport'] = ANKIPORTS[user.id]
+            if with_anki:
+                self.players[user.id]['ankiport'] = ANKIPORTS[user.id]
         except KeyError:
             pass
         return 0
@@ -278,19 +283,22 @@ class Game:
             result = list(result)
 
             # print(result)
-            for a in invoke('cardsInfo', self.players[MYTELID]['ankiport'], cards=result):
-                value = {}
-                value['id'] = int(a['cardId'])
-                if a['template']['name'] == 'Recall':
-                    value['type'] = 'Recall'
-                    value['Reading'] = a['fields']['Reading']['value']
-                    value['Expression'] = a['fields']['Expression']['value']
-                    self.answers[a['fields']['Meaning']['value']] = value
-                elif a['template']['name'] == 'Recognition':
-                    value['type'] = 'Recognition'
-                    value['Meaning'] = a['fields']['Meaning']['value']
-                    value['Reading'] = a['fields']['Reading']['value']
-                    self.answers[a['fields']['Expression']['value']] = value
+            for pinfo in self.players.values():
+                if 'ankiport' in pinfo:
+                    for a in invoke('cardsInfo', pinfo['ankiport'], cards=result):
+                        value = {}
+                        value['id'] = int(a['cardId'])
+                        if a['template']['name'] == 'Recall':
+                            value['type'] = 'Recall'
+                            value['Reading'] = a['fields']['Reading']['value']
+                            value['Expression'] = a['fields']['Expression']['value']
+                            self.answers[a['fields']['Meaning']['value']] = value
+                        elif a['template']['name'] == 'Recognition':
+                            value['type'] = 'Recognition'
+                            value['Meaning'] = a['fields']['Meaning']['value']
+                            value['Reading'] = a['fields']['Reading']['value']
+                            self.answers[a['fields']['Expression']['value']] = value
+                    break
 
             #  self.answers = {'August': {'type': 'Recall', 'Reading': 'Aug', 'Expression': 'aug'}, 'Sep': {
                 #  'type': 'Recall', 'Reading': 'Aug', 'Expression': 'aug'}}
@@ -298,7 +306,11 @@ class Game:
                     #  'Expression': 'aug'}, 'Sep': 'Sep , Okt; Mit ...'}
             #  self.answers= {'（〜を）おねがいします' :'..., please.'}
             self.all_words = self.answers.copy()
+
             self.next_word()
+            if self.check_if_game_done():
+                self.end_game()
+                
             thread = threading.Thread(target=self.timer)
             thread.start()
 

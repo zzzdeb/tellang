@@ -75,10 +75,13 @@ BUTTON = {
     'review_2': '4',
     'review_3': '5',
     'review_4': '6',
+    'play_withanki': '7',
 }
 
 play_button = [[InlineKeyboardButton("PLAY?",
-                                     callback_data=BUTTON['play'])]]
+                                     callback_data=BUTTON['play']),
+               InlineKeyboardButton("PLAY_ANKI?",
+                                     callback_data=BUTTON['play_withanki'])]]
 
 play_button_markup = InlineKeyboardMarkup(play_button)
 
@@ -152,7 +155,7 @@ def start(update, context):
         GAME.context = context
         GAME.update = update
         GAME.updater = updater
-        GAME.add_player(update, context)
+        GAME.add_player(update.effective_user)
         context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=update.effective_user.first_name,
@@ -222,12 +225,13 @@ def button(update, context):
     """
     query = update.callback_query
     if query.data == BUTTON["play"]:
-        if not GAME.add_player(update, context):
+        if not GAME.add_player(update.effective_user, with_anki=False):
             query.edit_message_text(text='{}\n{}'.format(
                 query.message.text, update.effective_user.first_name), reply_markup=play_button_markup)
-        if len(GAME.players) == 3:
-            GAME.players = {}
-            GAME.start()
+    elif query.data == BUTTON["play_withanki"]:
+        if not GAME.add_player(update.effective_user, with_anki=True):
+            query.edit_message_text(text='{}\n{}'.format(
+                query.message.text, update.effective_user.first_name), reply_markup=play_button_markup)
     elif query.data == BUTTON["vote_next"]:
         if GAME.vote_next(update.effective_user.id) == 0:
             query.edit_message_text(text='{}\n{}'.format(
