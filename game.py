@@ -306,7 +306,7 @@ class Game:
 
             result = list(result)
 
-            print(result)
+            #  print(result)
             self.prepare_answers(cids=result)
 
             #  self.answers = {'August': {'type': 'Recall', 'Reading': 'Aug', 'Expression': 'aug'}, 'Sep': {

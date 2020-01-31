@@ -41,224 +41,210 @@ def translate(update, context):
                 text = text+pair[0]
     context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
-#  from telegram import InlineQueryResultArticle, InputTextMessageContent
-#  def inline_caps(update, context):
-    #  query = update.inline_query.query
-    #  if not query:
-    #  return
-    #  results = list()
-    #  results.append(
-    #  InlineQueryResultArticle(
-    #  id=query.upper(),
-    #  title='Caps',
-    #  input_message_content=InputTextMessageContent(query.upper())
-    #  )
-    #  )
-    #  context.bot.answer_inline_query(update.inline_query.id, results)
-
-#  from telegram.ext import InlineQueryHandler
-#  inline_caps_handler = InlineQueryHandler(inline_caps)
-#  dispatcher.add_handler(inline_caps_handler)
-
-
 def unknown(update, context):
     """
     Docstr
     """
     context.bot.send_message(chat_id=update.effective_chat.id,
                              text="Sorry, I didn't understand that command.")
+class TelLang(object):
+
+    """Docstring for TelLang. """
+
+    def __init__(self):
+        """TODO: to be defined. """
+        self.game = Game()
+        self.updater = Updater(TOKEN, use_context=True)
+
+        self.BUTTON = {
+            'play': '1',
+            'vote_next': '2',
+            'review_1': '3',
+            'review_2': '4',
+            'review_3': '5',
+            'review_4': '6',
+            'play_withanki': '7',
+        }
+
+        play_button = [[InlineKeyboardButton("PLAY?",
+                                             callback_data=self.BUTTON['play']),
+                       InlineKeyboardButton("PLAY_ANKI?",
+                                             callback_data=self.BUTTON['play_withanki'])]]
+
+        self.play_button_markup = InlineKeyboardMarkup(play_button)
+
+        voteNext_button = [[InlineKeyboardButton("Yes",
+                                                 callback_data=self.BUTTON["vote_next"])]]
+        #  context.args
+        self.voteNext_button_markup = InlineKeyboardMarkup(voteNext_button)
+
+        review_button = [[InlineKeyboardButton("Again",
+                                               callback_data=self.BUTTON["review_1"]),
+                          InlineKeyboardButton("Hard",
+                                               callback_data=self.BUTTON["review_2"]), 
+                          InlineKeyboardButton("Normal",
+                                                callback_data=self.BUTTON["review_3"]), 
+                          InlineKeyboardButton("Easy",
+                                                callback_data=self.BUTTON["review_4"]),
+                          ]]
+        #  context.args
+        self.review_button_markup = InlineKeyboardMarkup(review_button)
+
+    def start_timer(self, context):
+        """
+        Docstr
+        """
+        if self.game.state == State.INIT:
+            context.bot.send_message(chat_id=context.job.context,
+                                     text='Preparing ...')
+            self.game.start()
+
+        context.bot.send_message(chat_id=context.job.context,
+                                 text='Starting with {} words'.format(len(self.game.all_words)))
+        #  updater.job_queue.run_repeating(check, 0.1, context=None, name=None)
 
 
-BUTTON = {
-    'play': '1',
-    'vote_next': '2',
-    'review_1': '3',
-    'review_2': '4',
-    'review_3': '5',
-    'review_4': '6',
-    'play_withanki': '7',
-}
+    def check(self, context):
+        """
+        Docstr
+        """
+        if self.game.state == State.ENDED:
+            #  for p, val in self.game.players.items():
+            #  try:
+            #  port = self.game.players[p]['ankiport']
+            #  except KeyError:
+            #  continue
 
-play_button = [[InlineKeyboardButton("PLAY?",
-                                     callback_data=BUTTON['play']),
-               InlineKeyboardButton("PLAY_ANKI?",
-                                     callback_data=BUTTON['play_withanki'])]]
+            text = self.game.winner_str()+'\n'
+            text += 'END'
+            context.bot.send_message(chat_id=context.job.context, text=text)
 
-play_button_markup = InlineKeyboardMarkup(play_button)
+            for p, val in self.game.players.items():
+                for cid, word in val['words_to_review'].items():
+                    context.bot.send_message(chat_id=p, text='{}::{}'.format(
+                        self.game.answer_str(word), cid), reply_markup=self.review_button_markup)
+            #  for cid, word in self.game.words_to_review:
+                #  context.bot.send_message(chat_id=context.job.context, text='{}::{}'.format(self.game.answer_str(word), cid), reply_markup=review_button_markup)
 
-voteNext_button = [[InlineKeyboardButton("Yes",
-                                         callback_data=BUTTON["vote_next"])]]
-#  context.args
-voteNext_button_markup = InlineKeyboardMarkup(voteNext_button)
-
-review_button = [[InlineKeyboardButton("Again",
-                                       callback_data=BUTTON["review_1"]),
-                  InlineKeyboardButton("Hard",
-                                       callback_data=BUTTON["review_2"]), 
-                  InlineKeyboardButton("Normal",
-                                        callback_data=BUTTON["review_3"]), 
-                  InlineKeyboardButton("Easy",
-                                        callback_data=BUTTON["review_4"]),
-                  ]]
-#  context.args
-review_button_markup = InlineKeyboardMarkup(review_button)
-"""
-Basic example for a bot that uses inline keyboards.
-"""
-GAME = KanjiGame()
+            self.game.state = State.INIT
+            context.job.schedule_removal()
 
 
-def start_timer(context):
-    """
-    Docstr
-    """
-    if GAME.state == State.INIT:
-        GAME.start()
+    def start(self, update, context):
+        """
+        Docstr
+        """
 
-    context.bot.send_message(chat_id=context.job.context,
-                             text='Starting with {} words'.format(len(GAME.all_words)))
-    #  updater.job_queue.run_repeating(check, 0.1, context=None, name=None)
+        if self.game.state in [State.INIT, State.ENDED]:
+            self.game = Game()
+            if len(context.args) > 0 and context.args[0] == 'kanji':
+                self.game = KanjiGame()
+            self.game.context = context
+            self.game.update = update
+            self.game.updater = updater
+            self.game.add_player(update.effective_user)
+            context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text='{}\n{}'.format(self.game.deckname, update.effective_user.first_name),
+                reply_markup=self.play_button_markup)
+            updater.job_queue.run_once(self.start_timer, 3,
+                                       context=update.message.chat_id, name=None)
+            updater.job_queue.run_repeating(self.check, 0.1,
+                                            context=update.message.chat_id,
+                                            name='Checker')
+        elif self.game.state == State.STARTED:
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text="Game running")
 
 
-def check(context):
-    """
-    Docstr
-    """
-    if GAME.state == State.ENDED:
-        #  for p, val in GAME.players.items():
-        #  try:
-        #  port = GAME.players[p]['ankiport']
-        #  except KeyError:
-        #  continue
+    def answer(self, update, context):
+        """
+        Docstr
+        """
+        self.game.answer(update.effective_user.id, ' '.join(context.args))
+        if self.game.state == State.INIT:
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=self.game.winner_str())
 
-        text = GAME.winner_str()+'\n'
+            return 1
+
+
+    def end_game(self, update, context, winner_announce=False):
+        """
+        Docstr
+        """
+        text = ''
+        if winner_announce:
+            text += self.game.winner_str() + '🎆🎆🎆\n'
         text += 'END'
-        context.bot.send_message(chat_id=context.job.context, text=text)
-
-        for p, val in GAME.players.items():
-            for cid, word in val['words_to_review'].items():
-                context.bot.send_message(chat_id=p, text='{}::{}'.format(
-                    GAME.answer_str(word), cid), reply_markup=review_button_markup)
-        #  for cid, word in GAME.words_to_review:
-            #  context.bot.send_message(chat_id=context.job.context, text='{}::{}'.format(GAME.answer_str(word), cid), reply_markup=review_button_markup)
-
-        GAME.state = State.INIT
-        context.job.schedule_removal()
-
-
-def start(update, context):
-    """
-    Docstr
-    """
-
-    if GAME.state in [State.INIT, State.ENDED]:
-        GAME.__init__()
-        GAME.context = context
-        GAME.update = update
-        GAME.updater = updater
-        GAME.add_player(update.effective_user)
-        context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=update.effective_user.first_name,
-            reply_markup=play_button_markup)
-        updater.job_queue.run_once(start_timer, 3,
-                                   context=update.message.chat_id, name=None)
-        updater.job_queue.run_repeating(check, 0.1,
-                                        context=update.message.chat_id,
-                                        name='Checker')
-    elif GAME.state == State.STARTED:
+        self.game.end_game()
         context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text="Game running")
+                                 text=text)
+        return 0
 
 
-def answer(update, context):
-    """
-    Docstr
-    """
-    GAME.answer(update.effective_user.id, ' '.join(context.args))
-    if GAME.state == State.INIT:
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text=GAME.winner_str())
-
-        return 1
+    def announce_winner(self, update, context):
+        """
+        Docstr
+        """
+        context.bot.send_message(update.effective_chat.id, text=self.game.winner_str())
 
 
-def end_game(update, context, winner_announce=False):
-    """
-    Docstr
-    """
-    text = ''
-    if winner_announce:
-        text += GAME.winner_str() + '🎆🎆🎆\n'
-    text += 'END'
-    GAME.end_game()
-    context.bot.send_message(chat_id=update.effective_chat.id,
-                             text=text)
-    return 0
-
-
-def announce_winner(update, context):
-    """
-    Docstr
-    """
-    context.bot.send_message(update.effective_chat.id, text=GAME.winner_str())
-
-
-def vote_next(update, context):
-    """
-    Docstr
-    """
-    text = GAME.answer_str()
-    if not GAME.vote_next(update.effective_user.id):
-        context.bot.send_message(
-            chat_id=update.effective_chat.id, text='Next?',
-            reply_markup=voteNext_button_markup)
-    else:
-        context.bot.send_message(
-            chat_id=update.effective_chat.id, text=text)
-        if GAME.state == State.ENDED:
-            announce_winner(update, context)
-
-
-def button(update, context):
-    """
-    Docstr
-    """
-    query = update.callback_query
-    if query.data == BUTTON["play"]:
-        if not GAME.add_player(update.effective_user, with_anki=False):
-            query.edit_message_text(text='{}\n{}'.format(
-                query.message.text, update.effective_user.first_name), reply_markup=play_button_markup)
-    elif query.data == BUTTON["play_withanki"]:
-        if not GAME.add_player(update.effective_user, with_anki=True):
-            query.edit_message_text(text='{}\n{}'.format(
-                query.message.text, update.effective_user.first_name), reply_markup=play_button_markup)
-    elif query.data == BUTTON["vote_next"]:
-        if GAME.vote_next(update.effective_user.id) == 0:
-            query.edit_message_text(text='{}\n{}'.format(
-                query.message.text, update.effective_user.first_name), reply_markup=play_button_markup)
+    def vote_next(self, update, context):
+        """
+        Docstr
+        """
+        text = self.game.answer_str()
+        if not self.game.vote_next(update.effective_user.id):
+            context.bot.send_message(
+                chat_id=update.effective_chat.id, text='Next?',
+                reply_markup=self.voteNext_button_markup)
         else:
-            query.edit_message_text(text='Next:')
-    elif query.data == BUTTON["review_1"]:
-        GAME.anki_answer(update.effective_user.id,
-                         int(query.message.text.split('::')[1]), ease=1)
-        query.edit_message_text(text='_{}_'.format(
-            query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
-    elif query.data == BUTTON["review_2"]:
-        GAME.anki_answer(update.effective_user.id,
-                         int(query.message.text.split('::')[1]), ease=2)
-        query.edit_message_text(
-            text='*{}*'.format(query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
-    elif query.data == BUTTON["review_3"]:
-        GAME.anki_answer(update.effective_user.id,
-                         int(query.message.text.split('::')[1]), ease=3)
-        query.edit_message_text(
-            text='*{}*'.format(query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
-    elif query.data == BUTTON["review_4"]:
-        GAME.anki_answer(update.effective_user.id,
-                         int(query.message.text.split('::')[1]), ease=4)
-        query.edit_message_text(
-            text='*{}*'.format(query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
+            context.bot.send_message(
+                chat_id=update.effective_chat.id, text=text)
+            if self.game.state == State.ENDED:
+                self.announce_winner(update, context)
+
+
+    def button(self, update, context):
+        """
+        Docstr
+        """
+        query = update.callback_query
+        if query.data == self.BUTTON["play"]:
+            if not self.game.add_player(update.effective_user, with_anki=False) and self.game.state == State.INIT:
+                query.edit_message_text(text='{}\n{}'.format(
+                    query.message.text, update.effective_user.first_name), reply_markup=self.play_button_markup)
+        elif query.data == self.BUTTON["play_withanki"]:
+            if not self.game.add_player(update.effective_user, with_anki=True) and self.game.state == State.INIT:
+                query.edit_message_text(text='{}\n{}'.format(
+                    query.message.text, update.effective_user.first_name), reply_markup=self.play_button_markup)
+        elif query.data == self.BUTTON["vote_next"]:
+            if self.game.vote_next(update.effective_user.id) == 0:
+                query.edit_message_text(text='{}\n{}'.format(
+                    query.message.text, update.effective_user.first_name), reply_markup=self.play_button_markup)
+            else:
+                query.edit_message_text(text='Next:')
+        elif query.data == self.BUTTON["review_1"]:
+            self.game.anki_answer(update.effective_user.id,
+                             int(query.message.text.split('::')[1]), ease=1)
+            query.edit_message_text(text='_{}_'.format(
+                query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
+        elif query.data == self.BUTTON["review_2"]:
+            self.game.anki_answer(update.effective_user.id,
+                             int(query.message.text.split('::')[1]), ease=2)
+            query.edit_message_text(
+                text='*{}*'.format(query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
+        elif query.data == self.BUTTON["review_3"]:
+            self.game.anki_answer(update.effective_user.id,
+                             int(query.message.text.split('::')[1]), ease=3)
+            query.edit_message_text(
+                text='*{}*'.format(query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
+        elif query.data == self.BUTTON["review_4"]:
+            self.game.anki_answer(update.effective_user.id,
+                             int(query.message.text.split('::')[1]), ease=4)
+            query.edit_message_text(
+                text='*{}*'.format(query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
 
 
 def bothelp(update, context):
@@ -294,16 +280,17 @@ def main():
     # Create the Updater and pass it your bot's token.
     # Make sure to set use_context=True to use the new context based callbacks
     # Post version 12 this will no longer be necessary
-    updater.dispatcher.add_handler(CommandHandler('start', start))
-    updater.dispatcher.add_handler(CallbackQueryHandler(button))
+    tellang = TelLang()
+    updater.dispatcher.add_handler(CommandHandler('start', tellang.start))
+    updater.dispatcher.add_handler(CallbackQueryHandler(tellang.button))
     updater.dispatcher.add_handler(CommandHandler('help', bothelp))
     updater.dispatcher.add_handler(MessageHandler(Filters.text, translate))
     updater.dispatcher.add_handler(CommandHandler('status', status))
     updater.dispatcher.add_handler(CommandHandler('t', translate))
-    updater.dispatcher.add_handler(CommandHandler('p', start))
-    updater.dispatcher.add_handler(CommandHandler('q', end_game))
-    updater.dispatcher.add_handler(CommandHandler('n', vote_next))
-    updater.dispatcher.add_handler(CommandHandler('a', answer))
+    updater.dispatcher.add_handler(CommandHandler('p', tellang.start))
+    updater.dispatcher.add_handler(CommandHandler('q', tellang.end_game))
+    updater.dispatcher.add_handler(CommandHandler('n', tellang.vote_next))
+    updater.dispatcher.add_handler(CommandHandler('a', tellang.answer))
 
     updater.dispatcher.add_error_handler(error)
 
