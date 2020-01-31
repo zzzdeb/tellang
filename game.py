@@ -292,7 +292,7 @@ class Game:
                         'guiDeckOverview', val['ankiport'], name=self.deckname)
 
                     #  print(val['fn'])
-                    query = '"deck:{}" prop:due<1'.format(self.deckname)
+                    query = '"deck:{}" (is:learn or prop:due<1)'.format(self.deckname)
                     print(query)
                     val['ankiCards'] = invoke(
                         'findCards', val['ankiport'], query=query)
