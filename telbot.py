@@ -275,6 +275,14 @@ def echo(context):
     """
     print(context.user_data)
 
+from config import ANKIPORTS
+from game import invoke
+def sync(update, context):
+    try:
+        invoke('sync', ANKIPORTS[update.effective_user.id])
+        update.message_reply_text('Done')
+    except:
+        update.message_reply_text('Error')
 
 def status(update, context):
     """
@@ -300,6 +308,7 @@ def main():
     updater.dispatcher.add_handler(CommandHandler('p', tellang.start))
     updater.dispatcher.add_handler(CommandHandler('q', tellang.end_game))
     updater.dispatcher.add_handler(CommandHandler('n', tellang.vote_next))
+    updater.dispatcher.add_handler(CommandHandler('sync', sync))
     updater.dispatcher.add_handler(CommandHandler('a', tellang.answer))
 
     updater.dispatcher.add_error_handler(error)
