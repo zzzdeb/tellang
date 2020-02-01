@@ -280,9 +280,9 @@ from game import invoke
 def sync(update, context):
     try:
         invoke('sync', ANKIPORTS[update.effective_user.id])
-        update.message_reply_text('Done')
+        update.message.reply_text('Done')
     except:
-        update.message_reply_text('Error')
+        update.message.reply_text('Error')
 
 def status(update, context):
     """
