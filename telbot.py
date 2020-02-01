@@ -78,7 +78,7 @@ class TelLang(object):
         #  context.args
         self.voteNext_button_markup = InlineKeyboardMarkup(voteNext_button)
 
-        review_button = [[InlineKeyboardButton("Again",
+        self.review_button = [[InlineKeyboardButton("Again",
                                                callback_data=self.BUTTON["review_1"]),
                           InlineKeyboardButton("Hard",
                                                callback_data=self.BUTTON["review_2"]), 
@@ -88,7 +88,7 @@ class TelLang(object):
                                                 callback_data=self.BUTTON["review_4"]),
                           ]]
         #  context.args
-        self.review_button_markup = InlineKeyboardMarkup(review_button)
+        self.review_button_markup = InlineKeyboardMarkup(self.review_button)
 
     def start_timer(self, context):
         """
@@ -109,6 +109,7 @@ class TelLang(object):
         Docstr
         """
         if self.game.state == State.ENDED:
+            self.game.state = State.INIT
             #  for p, val in self.game.players.items():
             #  try:
             #  port = self.game.players[p]['ankiport']
@@ -121,12 +122,21 @@ class TelLang(object):
 
             for p, val in self.game.players.items():
                 for cid, word in val['words_to_review'].items():
+                    markup = ''
+                    buttons = self.game.all_words[word]['answerButtons']
+                    if buttons == 2:
+                        markup = InlineKeyboardMarkup([self.review_button[0][:2]])
+                    elif buttons == 3:
+                        markup = InlineKeyboardMarkup([self.review_button[0][:3]])
+                    elif buttons == 4:
+                        markup = InlineKeyboardMarkup([self.review_button[0][:4]])
+
                     context.bot.send_message(chat_id=p, text='{}::{}'.format(
-                        self.game.answer_str(word), cid), reply_markup=self.review_button_markup)
+                        self.game.answer_str(word), cid), reply_markup=markup)
+
             #  for cid, word in self.game.words_to_review:
                 #  context.bot.send_message(chat_id=context.job.context, text='{}::{}'.format(self.game.answer_str(word), cid), reply_markup=review_button_markup)
 
-            self.game.state = State.INIT
             context.job.schedule_removal()
 
 

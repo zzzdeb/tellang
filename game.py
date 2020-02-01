@@ -261,6 +261,7 @@ class Game:
                 for a in invoke('cardsInfo', pinfo['ankiport'], cards=cids):
                     value = {}
                     value['id'] = int(a['cardId'])
+                    value['answerButtons'] = a['answerButtons']
                     if a['template']['name'] == 'Recall':
                         value['type'] = 'Recall'
                         value['Reading'] = a['fields']['Reading']['value']

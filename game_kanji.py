@@ -78,7 +78,8 @@ class KanjiGame(Game):
                 for a in invoke('cardsInfo', pinfo['ankiport'], cards=cids):
                     value = {}
                     value['id'] = int(a['cardId'])
+                    value['answerButtons'] = a['answerButtons']
                     value['keyword'] = a['fields']['keyword']['value']
                     self.answers[a['fields']['kanji']['value']] = value
-                print(self.answers)
+                #  print(self.answers)
                 return
