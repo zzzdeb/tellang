@@ -72,6 +72,7 @@ class Game:
         self.words_to_review = {}
         self.current_word = ''
         self.current_value = {}
+        self.random = True
 
         self.threshold = 20
         self.current_word_begin_time = dt.now()
@@ -109,7 +110,10 @@ class Game:
         if len(self.answers) == 0:
             self.current_word = ''
         else:
-            self.current_word = random.choice(list(self.answers.keys()))
+            if self.random:
+                self.current_word = random.choice(list(self.answers.keys()))
+            else:
+                self.current_word = list(self.answers.keys())[0]
             self.current_value = self.answers[self.current_word]
 
         # adding to users

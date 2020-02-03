@@ -12,6 +12,7 @@ from telegram.ext import (CallbackQueryHandler, CommandHandler, Filters,
 from config import TOKEN
 from game import Game, State
 from game_kanji import KanjiGame
+from game_4000 import English4000Game
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
@@ -147,8 +148,11 @@ class TelLang(object):
 
         if self.game.state in [State.INIT, State.ENDED]:
             self.game = Game()
-            if len(context.args) > 0 and context.args[0] == 'kanji':
-                self.game = KanjiGame()
+            if len(context.args) > 0:
+                if context.args[0] == 'kanji':
+                    self.game = KanjiGame()
+                elif context.args[0] == 'eng':
+                    self.game = English4000Game()
             self.game.context = context
             self.game.update = update
             self.game.updater = updater
