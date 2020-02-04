@@ -5,6 +5,7 @@ import telegram
 from datetime import datetime as dt
 import time
 
+from jiwer import wer
 
 class English4000Game(Game):
     """
@@ -33,7 +34,7 @@ class English4000Game(Game):
                                                   self.current_word),
                                               parse_mode=telegram.ParseMode.MARKDOWN)
                 self.phase = 1
-            if delta.seconds > 20:
+            if delta.seconds > 40:
                 text = self.answer_str()
                 self.context.bot.send_message(chat_id=self.update.effective_chat.id,
                                               text=text)
@@ -54,10 +55,12 @@ class English4000Game(Game):
         """
         ans = answer.lower()
         ansval = self.answers[self.current_word]
-        answers = [ansval['Example']]
+        #  answers = [ansval['Example']]
+        hyp = ' '.join([b for b in answer.lower()])
+        right = ' '.join([b for b in ansval['Example'].lower()])
         #  answers = [re.sub(r'\([^)]*\)', '', a).strip().lower()
                    #  for a in ansval['keyword'].replace(',', ';').replace('...', '').split(';')]
-        return ans in answers
+        return wer(right, hyp) < 0.15
 
     def answer_str(self, word=''):
         """TODO: Docstring for print_answer.
@@ -66,7 +69,7 @@ class English4000Game(Game):
         """
         w = word if word != '' else self.current_word
 
-        text = '%s : %s' % (w, self.all_words[w]['Example'])
+        text = '%s : \n %s' % (w, self.all_words[w]['Example'])
         return text
 
     def prepare_answers(self, cids):
