@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 
-import json
 import random
 import re
 import threading
 import time
-import urllib.request
 from datetime import datetime as dt
 from enum import Enum
+from helper import invoke
 
 #  from furigana.furigana import split_furigana
 import pykakasi
@@ -17,29 +16,6 @@ from googletrans import Translator
 from config import ANKIPORTS
 
 
-def request(action, **params):
-    """
-    Request
-    """
-    return {'action': action, 'params': params, 'version': 6}
-
-
-def invoke(action, port, **params):
-    """
-    Docstring
-    """
-    request_json = json.dumps(request(action, **params)).encode('utf-8')
-    response = json.load(urllib.request.urlopen(
-        urllib.request.Request('http://localhost:'+port, request_json)))
-    if len(response) != 2:
-        raise Exception('response has an unexpected number of fields')
-    if 'error' not in response:
-        raise Exception('response is missing required error field')
-    if 'result' not in response:
-        raise Exception('response is missing required result field')
-    if response['error'] is not None:
-        raise Exception('{}{}\n {}'.format(port, request_json, response['error']))
-    return response['result']
 
 
 class State(Enum):

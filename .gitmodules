@@ -1,0 +1,3 @@
+[submodule "genki-study-resources"]
+	path = genki-study-resources
+	url = https://github.com/SethClydesdale/genki-study-resources

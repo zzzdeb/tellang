@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-from game import Game, State, request, invoke
+from game import Game, State
+from helper import invoke
 import telegram
 from datetime import datetime as dt
 import time
