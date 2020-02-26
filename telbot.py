@@ -210,6 +210,8 @@ class TelLang(object):
                     self.game = KanjiGame()
                 elif context.args[0] == 'eng':
                     self.game = English4000Game()
+                elif context.args[0] == 'op':
+                    self.game.deckname = "Nihongo::One Piece Vocabulary"
             self.game.context = context
             self.game.update = update
             self.game.updater = updater
