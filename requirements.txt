@@ -5,3 +5,5 @@ telegram
 mecab-python3
 jaconv
 python-telegram-bot
+pandas
+html2text

@@ -16,7 +16,7 @@ import pykakasi
 import telegram
 from googletrans import Translator
 from gtts import gTTS
-#  import pandas as pd
+import pandas as pd
 
 from config import ANKIPORTS
 
@@ -154,7 +154,7 @@ class Game:
         """
         Docstring
         """
-        return self.current_word == '' or (max(list([a['points'] for a in self.players.values()])) if len(self.players) else 0) >= self.threshold
+        return type(self.current_word) != pd.Series or (max(list([a['points'] for a in self.players.values()])) if len(self.players) else 0) >= self.threshold
 
     def status(self):
         """

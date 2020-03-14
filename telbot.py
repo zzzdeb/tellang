@@ -11,13 +11,13 @@ import telegram
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (CallbackQueryHandler, CommandHandler, Filters,
                           MessageHandler, Updater)
+import argparse
 
 from config import TOKEN
 from game import Game, State
 from game_kanji import KanjiGame
 from game_4000 import English4000Game
 from game_ja_2000 import Game_ja2000
-from ankiaudio import AnkiAudio
 
 import xml.etree.ElementTree as ET
 import base64
@@ -37,7 +37,8 @@ ANKIDECKS = {
     'kanji' :  [KanjiGame, "Nihongo::01 NihongoShark.com: Kanji - with mn"],
     'op' : [Game, "Nihongo::One Piece Vocabulary"],
     'onepiece' : [Game, "Nihongo::One Piece Vocabulary"],
-    'j1' : [Game_ja2000, "deck:Nihongo::Japanese Core 2000 Step 01 Listening Sentence Vocab + Images"],
+    'j1' : [Game_ja2000, "Nihongo::Japanese Core 2000 Step 01 Listening Sentence Vocab + Images"],
+    'j2' : [Game_ja2000, "Nihongo::Japanese Core 2000 Step 02 Listening Sentence Vocab + Images"],
     'eng' : [English4000Game,  "English::4000 Essential English Words"],
 }
 
@@ -304,20 +305,45 @@ class AllGame:
         :arg1: TODO
         :returns: TODO
         """
+        parser = argparse.ArgumentParser(description='anki audio parser.')
+        parser.add_argument('-n', metavar='NUMBER', type=int, nargs='?',
+                            help='Number of cards to review', default=10)
+        parser.add_argument('-d', metavar='DECKNAME', type=str, nargs='?',
+                            help='AnkiDeckname', default="genki")
+
+        from io import StringIO # Python3 use: from io import StringIO
+        import sys
+
+        try:
+            old_stdout = sys.stdout
+            sys.stdout = mystdout = StringIO()
+            args = parser.parse_args(context.args)
+            sys.stdout = old_stdout
+        except SystemExit:
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=mystdout.getvalue())
+            sys.stdout = old_stdout
+            return 0
+
         tellang = self.addgame(update.effective_chat.id)
-        tellang.game = AnkiAudio()
-        tellang.game.deckname = "Nihongo::Genki 1 & 2, Incl Genki 1 Supplementary Vocab"
-        if len(context.args) > 1:
-            key = context.args[1]
-            if key in ANKIDECKS:
-                tellang.game = ANKIDECKS[key][0]()
-                tellang.game.deckname = ANKIDECKS[key][1]
+        tellang.game.random = False
+        key = ''
+        if args.d in ANKIDECKS:
+            key = args.d
+            tellang.game = ANKIDECKS[key][0]()
+            tellang.game.deckname = ANKIDECKS[key][1]
+        else:
+            tellang.game = Game()
+
         tellang.game.add_player(update.effective_user)
         tellang.game.start()
         tellang.game.state = State.ENDED
 
-        num = int(context.args[0]) if len(context.args)>0 else 10
-        for i in range(0, num-1):
+        starttext = 'From {} words'
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                 text=starttext.format(len(tellang.game.all_words)))
+
+        for i in range(0, args.n-1):
             tellang.game.next_word()
 
         tellang.review_mode = 'audio_quiz'
@@ -337,7 +363,12 @@ class TelLang(object):
         self.BUTTON = {
             'play': '1',
             'vote_next': '2',
+            'review_1': '3',
+            'review_2': '4',
+            'review_3': '5',
+            'review_4': '6',
             'play_withanki': '7',
+            'kanji_info': '8',
         }
 
         play_button = [[InlineKeyboardButton("PLAY?",
@@ -383,9 +414,9 @@ class TelLang(object):
     def send_words_to_review(self, context):
         with_audio = True
         for p, val in self.game.players.items():
-            for cid, word in val['words_to_review'].items():
+            for cid in self.game.all_words[self.game.all_words[p]].index:
                 markup = ''
-                buttons = self.game.all_words[word]['answerButtons']
+                buttons = self.game.all_words['answerButtons'].loc[cid]
                 if buttons == 2:
                     new_list = [self.review_button[0][:2] + [self.kanji_info_button]]
                 elif buttons == 3:
@@ -405,11 +436,11 @@ class TelLang(object):
                 markup = InlineKeyboardMarkup(new_list)
 
                 if self.review_mode == 'audio':
-                    context.bot.send_audio(chat_id=p, audio=self.game.answer_audio(cid, word), reply_markup=markup)
+                    context.bot.send_audio(chat_id=p, audio=self.game.answer_audio(cid), reply_markup=markup)
                 elif self.review_mode == 'audio_quiz':
-                    context.bot.send_audio(chat_id=p, audio=self.game.answer_audio(cid, word, asquiz=True), reply_markup=markup)
+                    context.bot.send_audio(chat_id=p, audio=self.game.answer_audio(cid, asquiz=True), reply_markup=markup)
                 else:
-                    context.bot.send_text(chat_id=p, text=self.game.answer_str(cid, word), reply_markup=markup)
+                    context.bot.send_text(chat_id=p, text=self.game.answer_str(cid), reply_markup=markup)
 
     def check(self, context):
         """
@@ -543,9 +574,9 @@ def bothelp(update, context):
     update.message.reply_text("Use /start to test this bot.")
 
 
-def error(update, context):
-    """Log Errors caused by Updates."""
-    LOGGER.warning('Update "%s" caused error "%s"', update, context.error)
+#  def error(update, context):
+    #  """Log Errors caused by Updates."""
+    #  LOGGER.warning('Update "%s" caused error "%s"', update, context.error)
 
 
 def echo(context):
@@ -593,7 +624,7 @@ def main():
     updater.dispatcher.add_handler(CommandHandler('a', allgame.answer))
     updater.dispatcher.add_handler(CommandHandler('list', allgame.listgames))
 
-    updater.dispatcher.add_error_handler(error)
+    #  updater.dispatcher.add_error_handler(error)
 
     updater.dispatcher.add_handler(MessageHandler(Filters.command, unknown))
     # Start the Bot
