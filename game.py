@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+import subprocess
+import base64
+from io import BytesIO
 import random
 import re
 import threading
@@ -12,11 +15,10 @@ from helper import invoke
 import pykakasi
 import telegram
 from googletrans import Translator
+from gtts import gTTS
+#  import pandas as pd
 
 from config import ANKIPORTS
-
-
-
 
 class State(Enum):
     """
@@ -242,15 +244,15 @@ class Game:
                     value = {}
                     value['id'] = int(a['cardId'])
                     value['answerButtons'] = a['answerButtons']
+                    value['Audio'] = a['fields']['Audio']['value']
+                    value['Reading'] = a['fields']['Reading']['value']
+                    value['Expression'] = a['fields']['Expression']['value']
+                    value['Meaning'] = a['fields']['Meaning']['value']
                     if a['template']['name'] == 'Recall':
                         value['type'] = 'Recall'
-                        value['Reading'] = a['fields']['Reading']['value']
-                        value['Expression'] = a['fields']['Expression']['value']
                         self.answers[a['fields']['Meaning']['value']] = value
                     elif a['template']['name'] == 'Recognition':
                         value['type'] = 'Recognition'
-                        value['Meaning'] = a['fields']['Meaning']['value']
-                        value['Reading'] = a['fields']['Reading']['value']
                         self.answers[a['fields']
                                      ['Expression']['value']] = value
                 return
@@ -329,6 +331,8 @@ class Game:
         """
         Docstring
         """
+        print(str(pid) + ' ' + str(cid))
+        print()
         if 'ankiport' in self.players[pid]:
             if invoke('areDue', self.players[pid]['ankiport'], cards=[cid])[0]:
                 print('Answering {}:{}'.format(
@@ -360,3 +364,68 @@ class Game:
             return 1
 
         return 0
+
+    def answer_audio(self, cid='', word='', asquiz=False):
+        if asquiz:
+            w = word if word != '' else self.current_word
+            cid = self.all_words[w]['id']
+
+            name = self.answer_str(w)
+
+            val = self.all_words[w]
+            val['ankiport'] = '8766'
+            res = []
+            text = ''
+            dummy_audio = '/tmp/dummy.mp3'
+            lang = 'en'
+            src_audio = '/tmp/tellangsrc.mp3'
+            dst_audio = '/tmp/tellangdst.mp3'
+            out_audio = '/tmp/tellangout.mp3'
+            delay = 5
+
+            subprocess.call('ffmpeg -y -f lavfi -i anullsrc -t {} '.format(delay) +
+                            dummy_audio, shell=True)  # returns the exit code in unix
+            eng_audio = ''
+            ja_audio = ''
+
+            if val['type'] == 'Recall':
+                eng_audio = src_audio
+                ja_audio = dst_audio
+
+            elif val['type'] == 'Recognition':
+                ja_audio = src_audio
+                eng_audio = dst_audio
+
+            if val['Audio']:
+                encoded_audio = invoke('retrieveMediaFile',
+                                       val['ankiport'], filename=val['Audio'][7:-1])
+                # jap_audio
+                with open(ja_audio, 'wb') as f:
+                    f.write(base64.b64decode(encoded_audio))
+            else:
+                tts = gTTS(val['Meaning'], lang='ja')
+                tts.save(ja_audio)
+
+            # eng_audio
+            tts = gTTS(val['Meaning'], lang=lang)
+            tts.save(eng_audio)
+
+            # concat
+            returned_value = subprocess.call('ffmpeg -y -i "concat:{}|{}|{}" {}'.format(
+                src_audio, dummy_audio, dst_audio, out_audio), shell=True)  # returns the exit code in unix
+
+            with open(out_audio, 'rb') as f:
+                val['audioQuiz'] = BytesIO(f.read())
+            print('Name '+name)
+            val['audioQuiz'].name = name
+
+            return val['audioQuiz']
+        else:
+            w = word if word != '' else self.current_word
+            val = self.all_words[w]
+            val['ankiport'] = '8766'
+            encoded_audio = invoke('retrieveMediaFile', val['ankiport'], filename=val['Audio'][7:-1])
+
+            res = BytesIO(base64.b64decode(encoded_audio))
+            res.name = self.answer_str(w)
+        return res
