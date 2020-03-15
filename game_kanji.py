@@ -20,6 +20,7 @@ class KanjiGame(Game):
         """
         Game.__init__(self)
         self.deckname = "Nihongo::01 NihongoShark.com: Kanji - with mn"
+        self.withaudio = False
 
     def timer(self):
         """
@@ -31,7 +32,7 @@ class KanjiGame(Game):
                 self.context.bot.send_message(chat_id=self.update.effective_chat.id,
                                               text='{}\n*{}*'.format(
                                                   self.status(),
-                                                  self.current_word),
+                                                  self.current_word['kanji']),
                                               parse_mode=telegram.ParseMode.MARKDOWN)
                 self.phase = 1
             if delta.seconds > 20:
@@ -54,33 +55,20 @@ class KanjiGame(Game):
 
         """
         ans = answer.lower()
-        ansval = self.answers[self.current_word]
-        answers = [ansval['keyword']]
+        answers = [self.current_word['keyword'].lower()]
         #  answers = [re.sub(r'\([^)]*\)', '', a).strip().lower()
                    #  for a in ansval['keyword'].replace(',', ';').replace('...', '').split(';')]
         return ans in answers
 
-    def answer_str(self, word=''):
+    def answer_str(self, cid=None):
         """TODO: Docstring for print_answer.
         :returns: TODO
 
         """
-        w = word if word != '' else self.current_word
+        if cid == None:
+            cid = self.current_word.name
+        df = self.all_words
+        cardinfo = df.loc[cid]
 
-        text = '%s : %s' % (w, self.all_words[w]['keyword'])
+        text = '%s : %s' % (cardinfo['kanji'], cardinfo['keyword'])
         return text
-
-    def prepare_answers(self, cids):
-        """
-        Doc
-        """
-        for pinfo in self.players.values():
-            if 'ankiport' in pinfo:
-                for a in invoke('cardsInfo', pinfo['ankiport'], cards=cids):
-                    value = {}
-                    value['id'] = int(a['cardId'])
-                    value['answerButtons'] = a['answerButtons']
-                    value['keyword'] = a['fields']['keyword']['value']
-                    self.answers[a['fields']['kanji']['value']] = value
-                #  print(self.answers)
-                return

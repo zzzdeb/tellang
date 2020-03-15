@@ -9,7 +9,7 @@ import threading
 import time
 from datetime import datetime as dt
 from enum import Enum
-from helper import invoke
+from helper import invoke, get_silence
 
 #  from furigana.furigana import split_furigana
 import pykakasi
@@ -45,12 +45,10 @@ class Game:
         self.context = None
         self.update = None
 
-        self.all_words = {}
-        self.answers = {}
-        self.words_to_review = {}
-        self.current_word = ''
-        self.current_value = {}
-        self.random = True
+        self.all_words = pd.DataFrame()
+        self.current_word = None
+        self.random = False
+        self.withaudio = True
 
         self.threshold = 20
         self.current_word_begin_time = dt.now()
@@ -80,28 +78,23 @@ class Game:
         Docstring
         """
         self.next_voted = set()
-
-        if self.current_word in self.answers:
-            del self.answers[self.current_word]
+        df = self.all_words
 
         self.phase = 0
-        if len(self.answers) == 0:
-            self.current_word = ''
-        else:
+
+        notanswered = df[df['NotSeen']]
+        if len(notanswered) > 0:
+            #  print(notanswered)
             if self.random:
-                self.current_word = random.choice(list(self.answers.keys()))
+                self.current_word = notanswered.sample(1).iloc[0]
             else:
-                self.current_word = list(self.answers.keys())[0]
-            self.current_value = self.answers[self.current_word]
-
-        # adding to users
-        if len(self.current_word) > 0:
-            for player in self.players:
-                self.players[player]['words_to_review'][self.answers[self.current_word]
-                                                        ['id']] = self.current_word
-
-            self.words_to_review[self.answers[self.current_word]
-                                 ['id']] = self.current_word
+                self.current_word = notanswered.iloc[0]
+            df.at[self.current_word.name, 'NotSeen'] = False
+            # mark to as review !!!
+            df.update(pd.DataFrame(True, columns=list(
+                self.players.keys()), index=[self.current_word.name]))
+        else:
+            self.current_word = None
 
         self.current_word_begin_time = dt.now()
         return self.current_word
@@ -118,8 +111,11 @@ class Game:
                     del self.players[user.id]['ankiport']
             return 1
         self.players[user.id] = {'fn': user.first_name, 'ln': user.last_name,
-                                 'words_to_review': {},
                                  'points': 0}
+        #  print(self.all_words.columns)
+        self.all_words[user.id] = pd.Series(False, index=self.all_words.index)
+        #  print(self.all_words.columns)
+
         try:
             if with_anki:
                 self.players[user.id]['ankiport'] = ANKIPORTS[user.id]
@@ -171,19 +167,20 @@ class Game:
         """
         while self.state == State.STARTED:
             delta = dt.now() - self.current_word_begin_time
+            word = self.current_word
+            kanji = re.sub(r'\[[^]]*\]', '', self.current_word['Expression'])
+            ask = kanji if word['Type'] == 'Recognition' else word['Meaning']
             if delta.seconds > 0 and self.phase == 0:
-                hiragana = re.sub(r'\[[^]]*\]', '', self.current_word)
-
-                #  str(self.players)+'\n *'+hiragana+'*'
                 self.context.bot.send_message(chat_id=self.update.effective_chat.id,
                                               text='{}\n*{}*'.format(
-                                                  self.status(), hiragana),
+                                                  self.status(), ask),
                                               parse_mode=telegram.ParseMode.MARKDOWN)
-                self.phase = 1 if (self.answers[self.current_word]['type'] ==
-                                   'Recognition' and not self.current_word == self.answers[self.current_word]['Reading']) else 2
+                # 2 round if it contains kanji
+                self.phase = 1 if (self.current_word['Type'] ==
+                                   'Recognition' and not self.current_word['Expression'] == self.current_word['Reading']) else 2
             if delta.seconds > 8 and self.phase == 1:
                 self.context.bot.send_message(chat_id=self.update.effective_chat.id,
-                                              text=self.answers[self.current_word]['Reading'])
+                                              text=self.current_word['Reading'])
                 self.phase = 2
             if delta.seconds > 20:
                 text = self.answer_str()
@@ -205,57 +202,60 @@ class Game:
 
         """
         ans = answer.lower()
-        ansval = self.answers[self.current_word]
         answers = []
-        if ansval['type'] == 'Recognition':
+        if self.current_word['Type'] == 'Recognition':
             answers = [re.sub(r'\([^)]*\)', '', a).strip().lower()
-                       for a in ansval['Meaning'].replace(',', ';').replace('...', '').split(';')]
-        elif ansval['type'] == 'Recall':
+                       for a in self.current_word['Meaning'].replace(',', ';').replace('...', '').split(';')]
+        elif self.current_word['Type'] == 'Recall':
             answers = [re.sub(r'\([^)]*\)', '', a).strip().lower()
-                       for a in ansval['Expression'].replace(',', ';').replace('...', '').split(';')]
+                       for a in self.current_word['Expression'].replace(',', ';').replace('...', '').split(';')]
             answers = [re.sub(r'\（[^)]*\）', '', a).strip().lower()
-                       for a in ansval['Expression'].replace(',', ';').replace('...', '').split(';')]
+                       for a in self.current_word['Expression'].replace(',', ';').replace('...', '').split(';')]
             answers += [self.converter1.do(v) for v in answers]
-            print(answers)
+        print(answers)
         return ans in answers
 
-    def answer_str(self, word=''):
+    def answer_str(self, cid=None):
         """TODO: Docstring for print_answer.
         :returns: TODO
 
         """
-        w = word if word != '' else self.current_word
+        if cid == None:
+            cid = self.current_word.name
+        df = self.all_words
+        cardinfo = df.loc[cid]
 
         text = ''
-        if self.all_words[w]['type'] == 'Recognition':
-            text = w + ' : '+self.all_words[w]['Meaning']
-        elif self.all_words[w]['type'] == 'Recall':
-            text = '%s : %s (%s)' % (w, self.all_words[w]['Expression'], self.converter1.do(
-                self.all_words[w]['Expression']))
+        if cardinfo['Type'] == 'Recognition':
+            text = '%s : %s' % (cardinfo['Expression'], cardinfo['Meaning'])
+        elif cardinfo['Type'] == 'Recall':
+            text = '%s : %s' % (cardinfo['Meaning'], cardinfo['Expression'])
         return text
 
     def prepare_answers(self, cids):
         """
-        DocString
+        Doc
         """
         for pinfo in self.players.values():
             if 'ankiport' in pinfo:
-                for a in invoke('cardsInfo', pinfo['ankiport'], cards=cids):
-                    value = {}
-                    value['id'] = int(a['cardId'])
-                    value['answerButtons'] = a['answerButtons']
-                    value['Audio'] = a['fields']['Audio']['value']
-                    value['Reading'] = a['fields']['Reading']['value']
-                    value['Expression'] = a['fields']['Expression']['value']
-                    value['Meaning'] = a['fields']['Meaning']['value']
-                    if a['template']['name'] == 'Recall':
-                        value['type'] = 'Recall'
-                        self.answers[a['fields']['Meaning']['value']] = value
-                    elif a['template']['name'] == 'Recognition':
-                        value['type'] = 'Recognition'
-                        self.answers[a['fields']
-                                     ['Expression']['value']] = value
-                return
+                infos = invoke('cardsInfo', pinfo['ankiport'], cards=cids)
+                fields = list(infos[0]['fields'].keys())
+                others = list(infos[0].keys())
+                others.remove('fields')
+                df = pd.DataFrame(columns=fields+others)
+                for card in infos:
+                    df.loc[int(card['cardId']), fields] = [a['value']
+                                                           for a in card['fields'].values()]
+                    df.loc[int(card['cardId']), others] = [card[a]
+                                                           for a in others]
+                df['Type'] = df['template'].apply(lambda x: x['name'])
+
+                df['NotSeen'] = pd.Series(True, index=df.index)
+                pkeys = list(self.players.keys())
+                df[pkeys] = pd.DataFrame(False, columns=pkeys, index=df.index)
+                self.all_words = df
+
+                return df
 
     def start(self):
         """
@@ -275,8 +275,9 @@ class Game:
                         'guiDeckOverview', val['ankiport'], name=self.deckname)
 
                     #  print(val['fn'])
-                    query = '"deck:{}" (is:learn or prop:due<1)'.format(self.deckname)
-                    print(query)
+                    query = '"deck:{}" (is:learn or prop:due<1)'.format(
+                        self.deckname)
+                    #  print(query)
                     val['ankiCards'] = invoke(
                         'findCards', val['ankiport'], query=query)
                     #  print(val['ankiCards'])
@@ -289,15 +290,7 @@ class Game:
 
             result = list(result)
 
-            #  print(result)
             self.prepare_answers(cids=result)
-
-            #  self.answers = {'August': {'type': 'Recall', 'Reading': 'Aug', 'Expression': 'aug'}, 'Sep': {
-            #  'type': 'Recall', 'Reading': 'Aug', 'Expression': 'aug'}}
-            #  self.answers = {'August': {'type': 'Recall', 'Reading': 'Aug',
-            #  'Expression': 'aug'}, 'Sep': 'Sep , Okt; Mit ...'}
-            #  self.answers= {'（〜を）おねがいします' :'..., please.'}
-            self.all_words = self.answers.copy()
 
             self.next_word()
             if self.check_if_game_done():
@@ -305,11 +298,6 @@ class Game:
 
             thread = threading.Thread(target=self.timer)
             thread.start()
-
-        elif self.state == State.STARTED:
-            self.context.bot.send_message(chat_id=self.update.effective_chat.id,
-                                          text="Game running")
-        return 0
 
     def vote_next(self, player_id):
         """
@@ -332,31 +320,28 @@ class Game:
         Docstring
         """
         print(str(pid) + ' ' + str(cid))
-        print()
         if 'ankiport' in self.players[pid]:
             if invoke('areDue', self.players[pid]['ankiport'], cards=[cid])[0]:
-                print('Answering {}:{}'.format(
-                    self.players[pid]['words_to_review'][cid], cid))
+                print('Answering  {} : {}'.format(pid, cid))
                 invoke('answerCard', self.players[pid]
                        ['ankiport'], cid=cid, ease=ease)
-                del self.players[pid]['words_to_review'][cid]
+                self.all_words[pid].loc[cid] = False
             else:
-                print('Not Due so not answering {}:{}'.format(
-                    self.players[pid]['words_to_review'][cid], cid))
+                print('Not Due so not answering {}:{}'.format(pid, cid))
         else:
-            print('Player not anki {}:{}'.format(
-                self.players[pid]['words_to_review'][cid], cid))
+            print('Player not anki {}:{}'.format(pid, cid))
 
-    def answer(self, player_id, answer):
+    def answer(self, pid, answer):
         """
         Docstring
         """
         if self.is_right_answer(answer):
-            self.players[player_id]['points'] += 1
-            if 'ankiport' in self.players[player_id]:
-                self.anki_answer(player_id, self.current_value['id'])
+            self.players[pid]['points'] += 1
+            cid = int(self.current_word.name)
+            if 'ankiport' in self.players[pid]:
+                self.anki_answer(pid, cid)
             else:
-                del self.players[player_id]['words_to_review'][self.current_value['id']]
+                self.all_words[pid].loc[cid] = False
 
             self.next_word()
             if self.check_if_game_done():
@@ -365,67 +350,62 @@ class Game:
 
         return 0
 
-    def answer_audio(self, cid='', word='', asquiz=False):
+    def answer_audio(self, cid='', asquiz=False):
+        if cid == None:
+            cid = self.current_word.name
+
+        val = self.all_words.loc[cid]
+        port = '8766'
+        src_audio = '/tmp/tellangsrc.mp3'
+        dst_audio = '/tmp/tellangdst.mp3'
+        out_audio = '/tmp/tellangout.mp3'
+        first_silence = get_silence(8)
+        second_silence = get_silence(3)
+        eng_audio = dst_audio
+        ja_audio = src_audio
+        name = self.answer_str(cid)
+        res = None
         if asquiz:
-            w = word if word != '' else self.current_word
-            cid = self.all_words[w]['id']
-
-            name = self.answer_str(w)
-
-            val = self.all_words[w]
-            val['ankiport'] = '8766'
-            res = []
-            text = ''
-            dummy_audio = '/tmp/dummy.mp3'
-            lang = 'en'
-            src_audio = '/tmp/tellangsrc.mp3'
-            dst_audio = '/tmp/tellangdst.mp3'
-            out_audio = '/tmp/tellangout.mp3'
-            delay = 5
-
-            subprocess.call('ffmpeg -y -f lavfi -i anullsrc -t {} '.format(delay) +
-                            dummy_audio, shell=True)  # returns the exit code in unix
-            eng_audio = ''
-            ja_audio = ''
-
-            if val['type'] == 'Recall':
+            if val['Type'] == 'Recall':
                 eng_audio = src_audio
                 ja_audio = dst_audio
 
-            elif val['type'] == 'Recognition':
+            elif val['Type'] == 'Recognition':
                 ja_audio = src_audio
                 eng_audio = dst_audio
 
             if val['Audio']:
                 encoded_audio = invoke('retrieveMediaFile',
-                                       val['ankiport'], filename=val['Audio'][7:-1])
+                                       port, filename=val['Audio'][7:-1])
                 # jap_audio
                 with open(ja_audio, 'wb') as f:
                     f.write(base64.b64decode(encoded_audio))
             else:
-                tts = gTTS(val['Meaning'], lang='ja')
+                tts = gTTS(val['Expression'], lang='ja')
                 tts.save(ja_audio)
 
             # eng_audio
-            tts = gTTS(val['Meaning'], lang=lang)
+            tts = gTTS(val['Meaning'], lang='en')
             tts.save(eng_audio)
 
             # concat
-            returned_value = subprocess.call('ffmpeg -y -i "concat:{}|{}|{}" {}'.format(
-                src_audio, dummy_audio, dst_audio, out_audio), shell=True)  # returns the exit code in unix
-
-            with open(out_audio, 'rb') as f:
-                val['audioQuiz'] = BytesIO(f.read())
-            print('Name '+name)
-            val['audioQuiz'].name = name
-
-            return val['audioQuiz']
+            returned_value = subprocess.call('ffmpeg -y -i "concat:{}|{}|{}|{}" -map_metadata -1 {}'.format(
+                src_audio, first_silence, dst_audio, second_silence, out_audio), shell=True)  # returns the exit code in unix
         else:
-            w = word if word != '' else self.current_word
-            val = self.all_words[w]
-            val['ankiport'] = '8766'
-            encoded_audio = invoke('retrieveMediaFile', val['ankiport'], filename=val['Audio'][7:-1])
+            if val['Audio']:
+                encoded_audio = invoke('retrieveMediaFile',
+                                       port, filename=val['Audio'][7:-1])
+                # jap_audio
+                with open(ja_audio, 'wb') as f:
+                    f.write(base64.b64decode(encoded_audio))
+            else:
+                tts = gTTS(val['Expression'], lang='ja')
+                tts.save(ja_audio)
 
-            res = BytesIO(base64.b64decode(encoded_audio))
-            res.name = self.answer_str(w)
+            returned_value = subprocess.call('ffmpeg -y -i  {} -map_metadata -1 -c:a copy {}'.format(
+                src_audio, out_audio), shell=True)
+
+        with open(out_audio, 'rb') as f:
+            res = BytesIO(f.read())
+        res.name = name
         return res

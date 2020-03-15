@@ -21,6 +21,7 @@ class English4000Game(Game):
         """
         Game.__init__(self)
         self.deckname = "English::4000 Essential English Words"
+        self.withaudio = False
 
     def timer(self):
         """
@@ -32,7 +33,7 @@ class English4000Game(Game):
                 self.context.bot.send_message(chat_id=self.update.effective_chat.id,
                                               text='{}\n*{}*'.format(
                                                   self.status(),
-                                                  self.current_word),
+                                                  self.current_word['Mongolian']),
                                               parse_mode=telegram.ParseMode.MARKDOWN)
                 self.phase = 1
             if delta.seconds > 40:
@@ -55,35 +56,23 @@ class English4000Game(Game):
 
         """
         ans = answer.lower()
-        ansval = self.answers[self.current_word]
+        ansval = self.current_word['Example']
         #  answers = [ansval['Example']]
         hyp = ' '.join([b for b in answer.lower()])
-        right = ' '.join([b for b in ansval['Example'].lower()])
+        right = ' '.join([b for b in ansval.lower()])
         #  answers = [re.sub(r'\([^)]*\)', '', a).strip().lower()
                    #  for a in ansval['keyword'].replace(',', ';').replace('...', '').split(';')]
         return wer(right, hyp) < 0.15
 
-    def answer_str(self, word=''):
+    def answer_str(self, cid=None):
         """TODO: Docstring for print_answer.
         :returns: TODO
 
         """
-        w = word if word != '' else self.current_word
+        if cid is None:
+            cid = self.current_word.name
+        df = self.all_words
+        cardinfo = df.loc[cid]
 
-        text = '%s : \n %s' % (w, self.all_words[w]['Example'])
+        text = '%s : %s' % (cardinfo['Mongolian'], cardinfo['Example'])
         return text
-
-    def prepare_answers(self, cids):
-        """
-        Doc
-        """
-        for pinfo in self.players.values():
-            if 'ankiport' in pinfo:
-                for a in invoke('cardsInfo', pinfo['ankiport'], cards=cids):
-                    value = {}
-                    value['id'] = int(a['cardId'])
-                    value['answerButtons'] = a['answerButtons']
-                    value['Example'] = a['fields']['Example']['value']
-                    self.answers[a['fields']['Mongolian']['value']] = value
-                #  print(self.answers)
-                return

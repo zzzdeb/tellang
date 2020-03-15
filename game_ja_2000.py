@@ -2,7 +2,7 @@
 
 from game import Game, State
 from io import BytesIO
-from helper import invoke
+from helper import invoke, get_silence
 import threading
 import telegram
 import subprocess
@@ -14,6 +14,7 @@ from gtts import gTTS
 import ast
 import base64
 from html2text import html2text
+import os
 
 
 class Game_ja2000(Game):
@@ -30,58 +31,7 @@ class Game_ja2000(Game):
         """
         Game.__init__(self)
         self.deckname = "Nihongo::Japanese Core 2000 Step 01 Listening Sentence Vocab + Images"
-        self.all_words = pd.DataFrame()
-        self.current_word = None
 
-    def next_word(self):
-        """
-        Docstring
-        """
-        self.next_voted = set()
-        df = self.all_words
-
-        self.phase = 0
-
-        notanswered = df[df['NotSeen']]
-        if len(notanswered) > 0:
-            #  print(notanswered)
-            if self.random:
-                self.current_word = notanswered.sample(1).iloc[0]
-            else:
-                self.current_word = notanswered.iloc[0]
-            df.at[self.current_word.name, 'NotSeen'] = False
-            # mark to as review !!!
-            df.update(pd.DataFrame(True, columns=list(
-                self.players.keys()), index=[self.current_word.name]))
-        else:
-            self.current_word = None
-
-        self.current_word_begin_time = dt.now()
-        return self.current_word
-
-    def add_player(self, user, with_anki=True):
-        """
-        Docstring
-        """
-        if user.id in self.players:
-            if with_anki and (user.id in ANKIPORTS):
-                self.players[user.id]['ankiport'] = ANKIPORTS[user.id]
-            else:
-                if 'ankiport' in self.players[user.id]:
-                    del self.players[user.id]['ankiport']
-            return 1
-        self.players[user.id] = {'fn': user.first_name, 'ln': user.last_name,
-                                 'points': 0}
-        #  print(self.all_words.columns)
-        self.all_words[user.id] = pd.Series(False, index=self.all_words.index)
-        #  print(self.all_words.columns)
-
-        try:
-            if with_anki:
-                self.players[user.id]['ankiport'] = ANKIPORTS[user.id]
-        except KeyError:
-            pass
-        return 0
 
     def timer(self):
         """
@@ -142,7 +92,6 @@ class Game_ja2000(Game):
         """
         if cid == None:
             cid = self.current_word.name
-        self.all_words.loc[cid]
         df = self.all_words
         cardinfo = df.loc[cid]
         if cardinfo['Type'] == 'Reading':
@@ -194,20 +143,13 @@ class Game_ja2000(Game):
         src_audio = '/tmp/tellangsrc.mp3'
         dst_audio = '/tmp/tellangdst.mp3'
         out_audio = '/tmp/tellangout.mp3'
-        ja_audio = src_audio
+        first_silence = get_silence(10)
+        second_silence = get_silence(3)
+        eng_audio = ''
+        ja_audio = ''
+        name = self.answer_str(cid)
+        res = None
         if asquiz:
-            name = self.answer_str(cid)
-
-            res = []
-            text = ''
-            dummy_audio = '/tmp/dummy.mp3'
-            lang = 'en'
-            delay = 5
-
-            subprocess.call('ffmpeg -y -f lavfi -i anullsrc -t {} '.format(delay) +
-                            dummy_audio, shell=True)  # returns the exit code in unix
-            eng_audio = ''
-            ja_audio = ''
 
             if val['Type'] == 'Reading':
                 ja_audio = src_audio
@@ -232,19 +174,12 @@ class Game_ja2000(Game):
                 tts.save(ja_audio)
 
             # eng_audio
-            tts = gTTS(val['Meaning'], lang=lang)
+            tts = gTTS(val['Meaning'], lang='en')
             tts.save(eng_audio)
 
             # concat
-            returned_value = subprocess.call('ffmpeg -y -i "concat:{}|{}|{}" -map_metadata -1 {}'.format(
-                src_audio, dummy_audio, dst_audio, out_audio), shell=True)  # returns the exit code in unix
-
-            with open(out_audio, 'rb') as f:
-                val['audioQuiz'] = BytesIO(f.read())
-            print('Name '+name)
-            val['audioQuiz'].name = name
-
-            return val['audioQuiz']
+            returned_value = subprocess.call('ffmpeg -y -i "concat:{}|{}|{}|{}" -map_metadata -1 {}'.format(
+                src_audio, first_silence, dst_audio, second_silence, out_audio), shell=True)  # returns the exit code in unix
         else:
             if val['Audio']:
                 encoded_audio = invoke('retrieveMediaFile',
@@ -259,91 +194,7 @@ class Game_ja2000(Game):
             returned_value = subprocess.call('ffmpeg -y -i  {} -map_metadata -1 -c:a copy {}'.format(
                 src_audio, out_audio), shell=True)
 
-            with open(out_audio, 'rb') as f:
-                res = BytesIO(f.read())
-            name = self.answer_str(cid)
-            print(name)
-            res.name = name
+        with open(out_audio, 'rb') as f:
+            res = BytesIO(f.read())
+        res.name = name
         return res
-
-    def start(self):
-        """
-        Docstring
-        """
-        if self.state == State.INIT:
-            self.state = State.STARTED
-
-            result = None
-            for val in self.players.values():
-                try:
-                    # Preparing anki
-                    invoke(
-                        'guiDeckOverview', val['ankiport'], name=self.deckname)
-                    invoke('sync', val['ankiport'])
-                    invoke(
-                        'guiDeckOverview', val['ankiport'], name=self.deckname)
-
-                    #  print(val['fn'])
-                    query = '"deck:{}" (is:learn or prop:due<1)'.format(
-                        self.deckname)
-                    #  print(query)
-                    val['ankiCards'] = invoke(
-                        'findCards', val['ankiport'], query=query)
-                    #  print(val['ankiCards'])
-                    if result == None:
-                        result = set(val['ankiCards'])
-                    else:
-                        result = result & set(val['ankiCards'])
-                except KeyError:
-                    print('KeyError')
-
-            result = list(result)
-
-            self.prepare_answers(cids=result)
-
-            self.next_word()
-            if self.check_if_game_done():
-                self.end_game()
-
-            thread = threading.Thread(target=self.timer)
-            thread.start()
-
-        elif self.state == State.STARTED:
-            self.context.bot.send_message(chat_id=self.update.effective_chat.id,
-                                          text="Game running")
-        return 0
-
-    def anki_answer(self, pid, cid, ease=2):
-        """
-        Docstring
-        """
-        print(str(pid) + ' ' + str(cid))
-        if 'ankiport' in self.players[pid]:
-            if invoke('areDue', self.players[pid]['ankiport'], cards=[cid])[0]:
-                print('Answering  {} : {}'.format(pid, cid))
-                invoke('answerCard', self.players[pid]
-                       ['ankiport'], cid=cid, ease=ease)
-                self.all_words[pid].loc[cid] = False
-            else:
-                print('Not Due so not answering {}:{}'.format(pid, cid))
-        else:
-            print('Player not anki {}:{}'.format(pid, cid))
-
-    def answer(self, pid, answer):
-        """
-        Docstring
-        """
-        if self.is_right_answer(answer):
-            self.players[pid]['points'] += 1
-            cid = self.current_word.name
-            if 'ankiport' in self.players[pid]:
-                self.anki_answer(pid, cid)
-            else:
-                self.all_words[pid].loc[cid] = False
-
-            self.next_word()
-            if self.check_if_game_done():
-                self.end_game()
-            return 1
-
-        return 0

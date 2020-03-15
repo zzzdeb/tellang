@@ -26,3 +26,30 @@ def invoke(action, port, **params):
     if response['error'] is not None:
         raise Exception('{}{}\n {}'.format(port, request_json, response['error']))
     return response['result']
+
+def echo(context):
+    """
+    Docstr
+    """
+    print(context.user_data)
+
+import os
+import subprocess
+def get_silence(sec):
+    """
+    gets silence with duration sec
+
+    :sec: TODO
+    :returns: TODO
+
+    """
+    pre = '/tmp/tellangsilence'
+    name = pre+str(sec) + '.mp3'
+
+    if os.path.isfile(name):
+        return name
+    else:
+        subprocess.call('ffmpeg -y -f lavfi -i anullsrc -t {} '.format(sec) +
+                        name, shell=True)  # returns the exit code in unix
+        return name
+
