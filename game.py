@@ -99,29 +99,35 @@ class Game:
         self.current_word_begin_time = dt.now()
         return self.current_word
 
-    def add_player(self, user, with_anki=True):
+    def add_player_pure(self, tid, fn, ln, with_anki=True):
         """
         Docstring
         """
-        if user.id in self.players:
-            if with_anki and (user.id in ANKIPORTS):
-                self.players[user.id]['ankiport'] = ANKIPORTS[user.id]
+        if tid in self.players:
+            if with_anki and (tid in ANKIPORTS):
+                self.players[tid]['ankiport'] = ANKIPORTS[tid]
             else:
-                if 'ankiport' in self.players[user.id]:
-                    del self.players[user.id]['ankiport']
+                if 'ankiport' in self.players[tid]:
+                    del self.players[tid]['ankiport']
             return 1
-        self.players[user.id] = {'fn': user.first_name, 'ln': user.last_name,
+        self.players[tid] = {'fn': fn, 'ln': ln,
                                  'points': 0}
         #  print(self.all_words.columns)
-        self.all_words[user.id] = pd.Series(False, index=self.all_words.index)
+        self.all_words[tid] = pd.Series(False, index=self.all_words.index)
         #  print(self.all_words.columns)
 
         try:
             if with_anki:
-                self.players[user.id]['ankiport'] = ANKIPORTS[user.id]
+                self.players[tid]['ankiport'] = ANKIPORTS[tid]
         except KeyError:
             pass
         return 0
+    
+    def add_player(self, user, with_anki=True):
+        """
+        Docstring
+        """
+        return self.add_player_pure(user.id, user.first_name, user.last_name)
 
     def end_game(self):
         """
@@ -359,7 +365,7 @@ class Game:
         src_audio = '/tmp/tellangsrc.mp3'
         dst_audio = '/tmp/tellangdst.mp3'
         out_audio = '/tmp/tellangout.mp3'
-        first_silence = get_silence(8)
+        first_silence = get_silence(6)
         second_silence = get_silence(3)
         eng_audio = dst_audio
         ja_audio = src_audio
@@ -407,5 +413,10 @@ class Game:
 
         with open(out_audio, 'rb') as f:
             res = BytesIO(f.read())
-        res.name = name
+        if val['Type'] == 'Recall':
+            res.name = name
+
+        elif val['Type'] == 'Recognition':
+            res.name = val['Expression']
+
         return res

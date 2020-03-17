@@ -32,7 +32,6 @@ class Game_ja2000(Game):
         Game.__init__(self)
         self.deckname = "Nihongo::Japanese Core 2000 Step 01 Listening Sentence Vocab + Images"
 
-
     def timer(self):
         """
         Docstring
@@ -119,8 +118,11 @@ class Game_ja2000(Game):
                     df.loc[int(card['cardId']), others] = [card[a]
                                                            for a in others]
                 df['Type'] = df['template'].apply(lambda x: x['name'])
-                df['Expression'] = df['Expression'].apply(lambda x: html2text(x))
-                df['Meaning'] = df['Meaning'].apply(lambda x: x.split('<br />')[0])
+                df = df[df['Type'] != 'Reading']
+                df['Expression'] = df['Expression'].apply(
+                    lambda x: html2text(x))
+                df['Meaning'] = df['Meaning'].apply(
+                    lambda x: x.split('<br />')[0])
                 df['Reading'] = df['Reading'].apply(lambda x: html2text(x))
 
                 df['NotSeen'] = pd.Series(True, index=df.index)
@@ -144,6 +146,8 @@ class Game_ja2000(Game):
         dst_audio = '/tmp/tellangdst.mp3'
         out_audio = '/tmp/tellangout.mp3'
         first_silence = get_silence(10)
+        first_silence_1 = get_silence(2)
+        first_silence_2 = get_silence(6)
         second_silence = get_silence(3)
         eng_audio = ''
         ja_audio = ''
@@ -151,13 +155,14 @@ class Game_ja2000(Game):
         res = None
         if asquiz:
 
-            if val['Type'] == 'Reading':
-                ja_audio = src_audio
-                eng_audio = dst_audio
+            #  if val['Type'] == 'Reading':
+            #  ja_audio = src_audio
+            #  eng_audio = dst_audio
 
-            elif val['Type'] == 'Listening':
+            if val['Type'] == 'Listening':
                 ja_audio = src_audio
                 eng_audio = dst_audio
+                name = val['Expression']
 
             elif val['Type'] == 'Production':
                 eng_audio = src_audio
@@ -177,9 +182,13 @@ class Game_ja2000(Game):
             tts = gTTS(val['Meaning'], lang='en')
             tts.save(eng_audio)
 
+            if val['Type'] == 'Listening':
+                returned_value = subprocess.call('ffmpeg -y -i "concat:{}|{}|{}|{}|{}|{}" -map_metadata -1 {}'.format(
+                    src_audio, first_silence_1, src_audio, first_silence_2, dst_audio, second_silence, out_audio), shell=True)  # returns the exit code in unix
+            elif val['Type'] == 'Production':
+                returned_value = subprocess.call('ffmpeg -y -i "concat:{}|{}|{}|{}" -map_metadata -1 {}'.format(
+                    src_audio, first_silence, dst_audio, second_silence, out_audio), shell=True)  # returns the exit code in unix
             # concat
-            returned_value = subprocess.call('ffmpeg -y -i "concat:{}|{}|{}|{}" -map_metadata -1 {}'.format(
-                src_audio, first_silence, dst_audio, second_silence, out_audio), shell=True)  # returns the exit code in unix
         else:
             if val['Audio']:
                 encoded_audio = invoke('retrieveMediaFile',
