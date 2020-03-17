@@ -27,6 +27,35 @@ def invoke(action, port, **params):
         raise Exception('{}{}\n {}'.format(port, request_json, response['error']))
     return response['result']
 
+import sys
+from io import StringIO
+
+def tel_argparse(parser, update, context):
+    """TODO: Docstring for argparse.
+
+    :update: TODO
+    :context: TODO
+    :returns: TODO
+
+    """
+    args = None
+    try:
+        old_stdout = sys.stdout
+        sys.stdout = mystdout = StringIO()
+        old_stderr = sys.stderr
+        sys.stderr = mystderr = StringIO()
+        args = parser.parse_args(context.args)
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+    except SystemExit:
+        text = mystdout.getvalue()
+        text += mystderr.getvalue()
+        if len(text)>0:
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=text)
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+    return args
 def echo(context):
     """
     Docstr
