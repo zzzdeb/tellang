@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
 import subprocess
+import os
 import base64
 from io import BytesIO
 import random
+from time import sleep
 import re
 import threading
 import time
@@ -18,7 +20,8 @@ from googletrans import Translator
 from gtts import gTTS
 import pandas as pd
 
-from config import ANKIPORTS
+from config import ANKIPORTS, ANKIUSERNAMES
+
 
 class State(Enum):
     """
@@ -103,26 +106,32 @@ class Game:
         """
         Docstring
         """
+        ankiroot = 'anki'
         if tid in self.players:
             if with_anki and (tid in ANKIPORTS):
                 self.players[tid]['ankiport'] = ANKIPORTS[tid]
+                ankiuser = ANKIUSERNAMES[tid]
+                #  subprocess.run([ankiroot, '-b', '{}_{}'.format(preankidataloc,
+                                                               #  ankiuser), '-p', ankiuser])
             else:
                 if 'ankiport' in self.players[tid]:
                     del self.players[tid]['ankiport']
             return 1
-        self.players[tid] = {'fn': fn, 'ln': ln,
-                                 'points': 0}
+        self.players[tid] = {'fn': fn, 'ln': ln, 'points': 0}
         #  print(self.all_words.columns)
         self.all_words[tid] = pd.Series(False, index=self.all_words.index)
         #  print(self.all_words.columns)
 
         try:
-            if with_anki:
-                self.players[tid]['ankiport'] = ANKIPORTS[tid]
+            self.players[tid]['ankiport'] = ANKIPORTS[tid]
+            ankiuser = ANKIUSERNAMES[tid]
+            os.system('{} -p {} &'.format(ankiroot, ankiuser))
+            sleep(5)
+            print(ankiuser)
         except KeyError:
             pass
         return 0
-    
+
     def add_player(self, user, with_anki=True):
         """
         Docstring
