@@ -271,15 +271,14 @@ class AllGame:
         chid = update.effective_chat.id
         query = update.callback_query
         if query.data in [self.BUTTON["review_1"], self.BUTTON["review_2"], self.BUTTON["review_3"], self.BUTTON["review_4"]]:
-            print(
-                query.message.reply_markup.inline_keyboard[0][-1]['callback_data'])
             callback_data = ast.literal_eval(
-                query.message.reply_markup.inline_keyboard[0][-1]['callback_data'])
+                query.message.reply_markup.inline_keyboard[1][-1]['callback_data'])
             cid = callback_data['cid']
             tellangid = callback_data['tellangid']
             tellang = self.games[tellangid]
 
-            invoke('guiDeckOverview', tellang.game.players[chid]['ankiport'], name=tellang.game.deckname)
+            invoke('guiDeckOverview',
+                   tellang.game.players[chid]['ankiport'], name=tellang.game.deckname)
 
             if query.data == self.BUTTON["review_1"]:
                 tellang.game.anki_answer(update.effective_user.id, cid, ease=1)
@@ -329,6 +328,7 @@ class AllGame:
                             help='Number of cards to review', default=10)
         parser.add_argument('-d', metavar='DECKNAME', type=str, nargs='?',
                             choices=ANKIDECKS.keys(), help='AnkiDeckname', default="genki")
+        parser.add_argument('-N', action='store_true', help='From New Cards')
 
         args = tel_argparse(parser, update, context)
         if args is None:
@@ -343,6 +343,9 @@ class AllGame:
             tellang.game.deckname = ANKIDECKS[key][1]
         else:
             tellang.game = Game()
+
+        if args.N:
+            tellang.game.deckfilter = 'is:new -is:buried -is:suspended'
 
         tellang.game.add_player(update.effective_user)
         tellang.game.start()
@@ -405,6 +408,7 @@ class TelLang(object):
                                InlineKeyboardButton("Easy",
                                                     callback_data=self.BUTTON["review_4"]),
                                ]]
+        self.HARD = ['😠', '😈', '🙂', '😇']
 
         self.kanji_info_button = InlineKeyboardButton("KanjiInfo",
                                                       callback_data=self.BUTTON["kanji_info"])
@@ -425,26 +429,23 @@ class TelLang(object):
         #  updater.job_queue.run_repeating(check, 0.1, context=None, name=None)
 
     def send_words_to_review(self, context):
+        nameLen = 65
         for p, val in self.game.players.items():
             for i, cid in enumerate(self.game.all_words[self.game.all_words[p]].index):
                 markup = ''
-                buttons = self.game.all_words['answerButtons'].loc[cid]
-                if buttons == 2:
-                    new_list = [self.review_button[0]
-                                [:2] + [self.kanji_info_button]]
-                elif buttons == 3:
-                    new_list = [self.review_button[0]
-                                [:3] + [self.kanji_info_button]]
-                elif buttons == 4:
-                    new_list = [self.review_button[0]
-                                [:4] + [self.kanji_info_button]]
+                buttonsText = self.game.all_words['nextReviews'].loc[cid]
+                buttons = len(buttonsText)
+                review_button = [[InlineKeyboardButton(
+                    self.HARD[i]+ ':' + text, callback_data=self.BUTTON["review_"+str(i+1)]) for i, text in enumerate(buttonsText)]]
+                new_list = [review_button[0]
+                            [:buttons], [self.kanji_info_button]]
 
                 callback_data = {
                     'cid': cid,
                     'tellangid': self.id
                 }
 
-                new_list[0].append(InlineKeyboardButton(".",
+                new_list[1].append(InlineKeyboardButton(".",
                                                         callback_data=str(callback_data)))
 
                 markup = InlineKeyboardMarkup(new_list)

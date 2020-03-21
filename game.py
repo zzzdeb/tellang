@@ -58,6 +58,7 @@ class Game:
         self.last_user_input_time = dt.now()
 
         self.deckname = "Nihongo::Genki 1 & 2, Incl Genki 1 Supplementary Vocab"
+        self.deckfilter = '(is:learn or is:due)'
 
         k = pykakasi.kakasi()
         k.setMode('K', 'a')
@@ -268,8 +269,9 @@ class Game:
                 df['NotSeen'] = pd.Series(True, index=df.index)
                 pkeys = list(self.players.keys())
                 df[pkeys] = pd.DataFrame(False, columns=pkeys, index=df.index)
-                self.all_words = df
+                df = df.sort_values(by=['dueDate'])
 
+                self.all_words = df
                 return df
 
     def start(self):
@@ -290,8 +292,8 @@ class Game:
                         'guiDeckOverview', val['ankiport'], name=self.deckname)
 
                     #  print(val['fn'])
-                    query = '"deck:{}" (is:learn or prop:due<1)'.format(
-                        self.deckname)
+                    query = '"deck:{}" {}'.format(
+                        self.deckname, self.deckfilter)
                     #  print(query)
                     val['ankiCards'] = invoke(
                         'findCards', val['ankiport'], query=query)
@@ -340,7 +342,7 @@ class Game:
                 print('Answering  {} : {}'.format(pid, cid))
                 invoke('answerCard', self.players[pid]
                        ['ankiport'], cid=cid, ease=ease)
-                self.all_words[pid].loc[cid] = False
+                self.all_words.at[cid, pid] = False
             else:
                 print('Not Due so not answering {}:{}'.format(pid, cid))
         else:
@@ -356,7 +358,7 @@ class Game:
             if 'ankiport' in self.players[pid]:
                 self.anki_answer(pid, cid)
             else:
-                self.all_words[pid].loc[cid] = False
+                self.all_words.at[cid, pid] = False
 
             self.next_word()
             if self.check_if_game_done():
@@ -365,7 +367,7 @@ class Game:
 
         return 0
 
-    def answer_audio(self, cid='', asquiz=False):
+    def answer_audio(self, cid=None, asquiz=False):
         if cid == None:
             cid = self.current_word.name
 
@@ -429,3 +431,13 @@ class Game:
             res.name = val['Expression']
 
         return res
+
+
+    def review(self, arg1):
+        """TODO: Docstring for review.
+
+        :arg1: TODO
+        :returns: TODO
+
+        """
+        pass
