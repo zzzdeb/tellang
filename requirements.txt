@@ -9,3 +9,4 @@ pandas
 html2text
 gtts
 jiwer
+telegram

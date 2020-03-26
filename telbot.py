@@ -24,6 +24,7 @@ from game import Game, State, invoke
 from game_4000 import English4000Game
 from game_ja_2000 import Game_ja2000
 from game_kanji import KanjiGame
+from game_500 import Game_500
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
@@ -40,6 +41,7 @@ ANKIDECKS = {
     'j1': [Game_ja2000, "Nihongo::Japanese Core 2000 Step 01 Listening Sentence Vocab + Images"],
     'j2': [Game_ja2000, "Nihongo::Japanese Core 2000 Step 02 Listening Sentence Vocab + Images"],
     'eng': [English4000Game, "English::4000 Essential English Words"],
+    '500': [Game_500, "English::English First 500 - Green Yurt (mn)"],
 }
 
 
@@ -173,13 +175,16 @@ def kanji_lookup(update, context):
         context.bot.send_message(
             chat_id=update.effective_chat.id, text=text, parse_mode=telegram.ParseMode.HTML)
 
-
 def translate(update, context):
     """
     Docstr
     """
     translator = Translator()
-    text = translator.translate(' '.join(context.args), dest='ja').text
+    if not context.args is None:
+        msg = ' '.join(context.args)
+    else:
+        msg = update.message.text
+    text = translator.translate(msg, dest='ja').text
     text = text+'\n'
     two_lines = False
     for pair in split_furigana(text):
@@ -428,7 +433,7 @@ class TelLang(object):
                                  text='Starting with {} words'.format(len(self.game.all_words)))
         #  updater.job_queue.run_repeating(check, 0.1, context=None, name=None)
 
-    def send_words_to_review(self, context):
+    def send_words_to_review(self, context, with_answer_buttons=True):
         nameLen = 65
         for p, val in self.game.players.items():
             for i, cid in enumerate(self.game.all_words[self.game.all_words[p]].index):
@@ -448,18 +453,19 @@ class TelLang(object):
                 new_list[1].append(InlineKeyboardButton(".",
                                                         callback_data=str(callback_data)))
 
-                markup = InlineKeyboardMarkup(new_list)
+                if with_answer_buttons:
+                    markup = InlineKeyboardMarkup(new_list)
 
                 if self.review_mode == 'audio':
                     audio = self.game.answer_audio(cid)
-                    audio.name = '{}. {}'.format(i+1, audio.name)
+                    text = self.game.answer_str(cid)
                     context.bot.send_audio(
-                        chat_id=p, audio=audio, reply_markup=markup)
+                        chat_id=p, audio=audio, caption='{}. {}'.format(i+1, text), reply_markup=markup)
                 elif self.review_mode == 'audio_quiz':
                     audio = self.game.answer_audio(cid, asquiz=True)
-                    audio.name = '{}. {}'.format(i+1, audio.name)
+                    text = self.game.answer_str(cid)
                     context.bot.send_audio(
-                        chat_id=p, audio=audio, reply_markup=markup)
+                        chat_id=p, audio=audio, caption='{}. {}'.format(i+1, text), reply_markup=markup)
                 else:
                     text = self.game.answer_str(cid)
                     text = '{}. {}'.format(i+1, text)
@@ -626,7 +632,6 @@ def main():
     updater.dispatcher.add_handler(CommandHandler('start', allgame.start))
     updater.dispatcher.add_handler(CallbackQueryHandler(allgame.button))
     updater.dispatcher.add_handler(CommandHandler('help', bothelp))
-    updater.dispatcher.add_handler(MessageHandler(Filters.text, translate))
     updater.dispatcher.add_handler(CommandHandler('status', status))
     updater.dispatcher.add_handler(CommandHandler('kanji', kanji_lookup))
     updater.dispatcher.add_handler(CommandHandler('t', translate))
@@ -642,6 +647,8 @@ def main():
     #  updater.dispatcher.add_error_handler(error)
 
     updater.dispatcher.add_handler(MessageHandler(Filters.command, unknown))
+
+    updater.dispatcher.add_handler(MessageHandler(Filters.text, translate))
     # Start the Bot
     updater.start_polling()
 
