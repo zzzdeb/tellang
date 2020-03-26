@@ -460,12 +460,12 @@ class TelLang(object):
                     audio = self.game.answer_audio(cid)
                     text = self.game.answer_str(cid)
                     context.bot.send_audio(
-                        chat_id=p, audio=audio, caption='{}. {}'.format(i+1, text), reply_markup=markup)
+                        chat_id=p, audio=audio, title=text, caption='{}. {}'.format(i+1, text), reply_markup=markup)
                 elif self.review_mode == 'audio_quiz':
                     audio = self.game.answer_audio(cid, asquiz=True)
                     text = self.game.answer_str(cid)
                     context.bot.send_audio(
-                        chat_id=p, audio=audio, caption='{}. {}'.format(i+1, text), reply_markup=markup)
+                        chat_id=p, audio=audio, title=text, caption='{}. {}'.format(i+1, text), reply_markup=markup)
                 else:
                     text = self.game.answer_str(cid)
                     text = '{}. {}'.format(i+1, text)
