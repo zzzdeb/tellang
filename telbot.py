@@ -572,11 +572,10 @@ class AllGame:
                 return
             elif rest.startswith('num_'):
                 num = int(rest[4:])
-                self.games[update.effective_chat.id].game.deckname = num
+                self.games[update.effective_chat.id].num = num
 
                 buttons = [[InlineKeyboardButton(str(ind), callback_data='ankiaudio_N_'+str(ind)) for ind in [False, True]]]
                 button_markup = InlineKeyboardMarkup(buttons)
-                pp(str(query.message.text))
                 query.edit_message_text(text='{} {}\nNew words?:'.format(query.message.text, num), reply_markup=button_markup)
                 return
             elif rest.startswith('N_'):
