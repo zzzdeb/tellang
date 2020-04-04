@@ -208,163 +208,7 @@ def unknown(update, context):
                              text="Sorry, I didn't understand that command.")
 
 
-class AllGame:
 
-    """Docstring for AllGame. """
-
-    def __init__(self):
-        """TODO: to be defined. """
-        self.games = {}
-        self.end_games = {}
-        self.BUTTON = {
-            'review_1': '3',
-            'review_2': '4',
-            'review_3': '5',
-            'review_4': '6',
-            'kanji_info': '8',
-        }
-
-    def command(self, update, context):
-        """TODO: Docstring for command.
-
-        :update: TODO
-        :context: TODO
-        :returns: TODO
-
-        """
-        parser = argparse.ArgumentParser(description='anki audio parser.')
-        parser = argparse.ArgumentParser(description='anki audio parser.')
-        parser = argparse.ArgumentParser(description='anki audio parser.')
-        parser.add_argument('-n', metavar='NUMBER', type=int, nargs='?',
-                            help='Number of cards to review', default=10)
-        parser.add_argument('-d', metavar='DECKNAME', type=str, nargs='?',
-                            help='AnkiDeckname', default="genki")
-
-    def addgame(self, id):
-        """TODO: Docstring for addgame.
-
-        :id: TODO
-        :returns: TODO
-
-        """
-        self.games[id] = TelLang(id)
-        return self.games[id]
-
-    def start(self, update, context):
-
-        chid = update.effective_chat.id
-        if chid in self.games:
-            self.games[chid].start(update, context)
-        else:
-            self.addgame(chid)
-            self.games[chid].start(update, context)
-
-    def end_game(self, update, context):
-        chid = update.effective_chat.id
-        if chid in self.games:
-            self.games[chid].end_game(update, context)
-
-    def vote_next(self, update, context):
-        chid = update.effective_chat.id
-        if chid in self.games:
-            self.games[chid].vote_next(update, context)
-
-    def button(self, update, context):
-        """
-        Docstr
-        """
-        chid = update.effective_chat.id
-        query = update.callback_query
-        if query.data in [self.BUTTON["review_1"], self.BUTTON["review_2"], self.BUTTON["review_3"], self.BUTTON["review_4"]]:
-            callback_data = ast.literal_eval(
-                query.message.reply_markup.inline_keyboard[1][-1]['callback_data'])
-            cid = callback_data['cid']
-            tellangid = callback_data['tellangid']
-            tellang = self.games[tellangid]
-
-            invoke('guiDeckOverview',
-                   tellang.game.players[chid]['ankiport'], name=tellang.game.deckname)
-
-            if query.data == self.BUTTON["review_1"]:
-                tellang.game.anki_answer(update.effective_user.id, cid, ease=1)
-                #  query.edit_message_text(text='_{}_'.format(
-                #  query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
-            elif query.data == self.BUTTON["review_2"]:
-                tellang.game.anki_answer(update.effective_user.id, cid, ease=2)
-            elif query.data == self.BUTTON["review_3"]:
-                tellang.game.anki_answer(update.effective_user.id, cid, ease=3)
-            elif query.data == self.BUTTON["review_4"]:
-                tellang.game.anki_answer(update.effective_user.id, cid, ease=4)
-            query.edit_message_reply_markup(reply_markup='')
-        elif query.data == self.BUTTON["kanji_info"]:
-            res = kanji_lookup_str_image(query.message.text)
-
-            for text, fh in res:
-                context.bot.send_photo(
-                    chat_id=update.effective_chat.id, message='test', photo=fh)
-
-                context.bot.send_message(
-                    chat_id=update.effective_chat.id, text=text, parse_mode=telegram.ParseMode.HTML)
-        else:
-            if chid in self.games:
-                self.games[chid].button(update, context)
-
-    def answer(self, update, context):
-        chid = update.effective_chat.id
-        if chid in self.games:
-            self.games[chid].answer(update, context)
-
-    def listgames(self, update, context):
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text=str(self.games))
-
-    def anki_audio(self, update, context):
-        """TODO: Docstring for ankie_audio.
-        1. Find 30 words
-        2. TTS on words
-        3. connect audios
-        4. send audio
-
-        :arg1: TODO
-        :returns: TODO
-        """
-        parser = argparse.ArgumentParser(description='anki audio parser.')
-        parser.add_argument('-n', metavar='NUMBER', type=int, nargs='?',
-                            help='Number of cards to review', default=10)
-        parser.add_argument('-d', metavar='DECKNAME', type=str, nargs='?',
-                            choices=ANKIDECKS.keys(), help='AnkiDeckname', default="genki")
-        parser.add_argument('-N', action='store_true', help='From New Cards')
-
-        args = tel_argparse(parser, update, context)
-        if args is None:
-            return 0
-
-        tellang = self.addgame(update.effective_chat.id)
-        tellang.game.random = False
-        key = ''
-        if args.d in ANKIDECKS:
-            key = args.d
-            tellang.game = ANKIDECKS[key][0]()
-            tellang.game.deckname = ANKIDECKS[key][1]
-        else:
-            tellang.game = Game()
-
-        if args.N:
-            tellang.game.deckfilter = 'is:new -is:buried -is:suspended'
-
-        tellang.game.add_player(update.effective_user)
-        tellang.game.start()
-        tellang.game.state = State.ENDED
-
-        starttext = 'From {} words'
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text=starttext.format(len(tellang.game.all_words)))
-
-        for i in range(0, args.n-1):
-            tellang.game.next_word()
-
-        tellang.review_mode = 'audio_quiz'
-        tellang.send_words_to_review(context)
 
 
 class TelLang(object):
@@ -593,6 +437,212 @@ class TelLang(object):
             else:
                 query.edit_message_text(text='Next:')
 
+class TelLangAudio(TelLang):
+
+    """Docstring for TelLangAudio. """
+
+    def __init__(self, id):
+        """TODO: to be defined. """
+        TelLang.__init__(self, id)
+        self.num = 10
+        self.deckname = None
+        self.game = Game()
+
+    def send_audios(self, update, context):
+        self.game.add_player(update.effective_user)
+        self.game.start()
+        self.game.state = State.ENDED
+
+        starttext = 'From {} words'
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                 text=starttext.format(len(self.game.all_words)))
+
+        for i in range(0, self.num-1):
+            self.game.next_word()
+
+        self.review_mode = 'audio_quiz'
+        self.send_words_to_review(context)
+
+class AllGame:
+
+    """Docstring for AllGame. """
+
+    def __init__(self):
+        """TODO: to be defined. """
+        self.games = {}
+        self.end_games = {}
+        self.BUTTON = {
+            'review_1': '3',
+            'review_2': '4',
+            'review_3': '5',
+            'review_4': '6',
+            'kanji_info': '8',
+        }
+
+    def command(self, update, context):
+        """TODO: Docstring for command.
+
+        :update: TODO
+        :context: TODO
+        :returns: TODO
+
+        """
+        parser = argparse.ArgumentParser(description='anki audio parser.')
+        parser = argparse.ArgumentParser(description='anki audio parser.')
+        parser = argparse.ArgumentParser(description='anki audio parser.')
+        parser.add_argument('-n', metavar='NUMBER', type=int, nargs='?',
+                            help='Number of cards to review', default=10)
+        parser.add_argument('-d', metavar='DECKNAME', type=str, nargs='?',
+                            help='AnkiDeckname', default="genki")
+
+    def addgame(self, id, tellang=TelLang):
+        """TODO: Docstring for addgame.
+
+        :id: TODO
+        :returns: TODO
+
+        """
+        self.games[id] = tellang(id)
+        return self.games[id]
+
+    def start(self, update, context):
+
+        chid = update.effective_chat.id
+        if chid in self.games:
+            self.games[chid].start(update, context)
+        else:
+            self.addgame(chid)
+            self.games[chid].start(update, context)
+
+    def end_game(self, update, context):
+        chid = update.effective_chat.id
+        if chid in self.games:
+            self.games[chid].end_game(update, context)
+
+    def vote_next(self, update, context):
+        chid = update.effective_chat.id
+        if chid in self.games:
+            self.games[chid].vote_next(update, context)
+
+    def button(self, update, context):
+        """
+        Docstr
+        """
+        chid = update.effective_chat.id
+        query = update.callback_query
+        if query.data in [self.BUTTON["review_1"], self.BUTTON["review_2"], self.BUTTON["review_3"], self.BUTTON["review_4"]]:
+            callback_data = ast.literal_eval(
+                query.message.reply_markup.inline_keyboard[1][-1]['callback_data'])
+            cid = callback_data['cid']
+            tellangid = callback_data['tellangid']
+            tellang = self.games[tellangid]
+
+            invoke('guiDeckOverview',
+                   tellang.game.players[chid]['ankiport'], name=tellang.game.deckname)
+
+            if query.data == self.BUTTON["review_1"]:
+                tellang.game.anki_answer(update.effective_user.id, cid, ease=1)
+                #  query.edit_message_text(text='_{}_'.format(
+                #  query.message.text), parse_mode=telegram.ParseMode.MARKDOWN)
+            elif query.data == self.BUTTON["review_2"]:
+                tellang.game.anki_answer(update.effective_user.id, cid, ease=2)
+            elif query.data == self.BUTTON["review_3"]:
+                tellang.game.anki_answer(update.effective_user.id, cid, ease=3)
+            elif query.data == self.BUTTON["review_4"]:
+                tellang.game.anki_answer(update.effective_user.id, cid, ease=4)
+            query.edit_message_reply_markup(reply_markup='')
+        elif query.data == self.BUTTON["kanji_info"]:
+            res = kanji_lookup_str_image(query.message.text)
+
+            for text, fh in res:
+                context.bot.send_photo(
+                    chat_id=update.effective_chat.id, message='test', photo=fh)
+
+                context.bot.send_message(
+                    chat_id=update.effective_chat.id, text=text, parse_mode=telegram.ParseMode.HTML)
+        elif query.data.startswith('ankiaudio_'):
+            rest = query.data[10:]
+            if rest.startswith('deck_'):
+                key = rest[5:]
+                self.games[update.effective_chat.id].game.deckname = ANKIDECKS[key][1]
+
+                buttons = [[InlineKeyboardButton(ind, callback_data='ankiaudio_num_'+str(ind)) for ind in [10, 20, 50, 100]]]
+                button_markup = InlineKeyboardMarkup(buttons)
+                query.edit_message_text(text='Deck: {}\nNumber:'.format(key), reply_markup=button_markup)
+                return
+            elif rest.startswith('num_'):
+                num = int(rest[4:])
+                self.games[update.effective_chat.id].game.deckname = num
+
+                buttons = [[InlineKeyboardButton(str(ind), callback_data='ankiaudio_N_'+str(ind)) for ind in [False, True]]]
+                button_markup = InlineKeyboardMarkup(buttons)
+                pp(str(query.message.text))
+                query.edit_message_text(text='{} {}\nNew words?:'.format(query.message.text, num), reply_markup=button_markup)
+                return
+            elif rest.startswith('N_'):
+                new = bool(rest[2:])
+                tellang = self.games[update.effective_chat.id]
+                if new:
+                    tellang.game.deckfilter = 'is:new -is:buried -is:suspended'
+                tellang.send_audios(update, context)
+
+        else:
+            if chid in self.games:
+                self.games[chid].button(update, context)
+
+
+    def answer(self, update, context):
+        chid = update.effective_chat.id
+        if chid in self.games:
+            self.games[chid].answer(update, context)
+
+    def listgames(self, update, context):
+        context.bot.send_message(chat_id=update.effective_chat.id,
+                                 text=str(self.games))
+
+
+    def anki_audio(self, update, context):
+        """TODO: Docstring for ankie_audio.
+        1. Find 30 words
+        2. TTS on words
+        3. connect audios
+        4. send audio
+
+        :arg1: TODO
+        :returns: TODO
+        """
+        tellang = self.addgame(update.effective_chat.id, tellang=TelLangAudio)
+        tellang.game.random = False
+        print('Args: '+str(context.args))
+
+        if context.args == []:
+            buttons = [[InlineKeyboardButton(ind, callback_data='ankiaudio_deck_'+ind)] for ind in ANKIDECKS]
+            button_markup = InlineKeyboardMarkup(buttons)
+            context.bot.send_message(chat_id=update.effective_chat.id, text='From deck:', reply_markup=button_markup)
+            return
+
+        parser = argparse.ArgumentParser(description='anki audio parser.')
+        parser.add_argument('-n', metavar='NUMBER', type=int, nargs='?',
+                            help='Number of cards to review', default=10)
+        parser.add_argument('-d', metavar='DECKNAME', type=str, nargs='?',
+                            choices=ANKIDECKS.keys(), help='AnkiDeckname', default="genki")
+        parser.add_argument('-N', action='store_true', help='From New Cards')
+
+        args = tel_argparse(parser, update, context)
+        if args is None:
+            return 0
+
+        tellang.num = args.n
+        key = ''
+        if args.d in ANKIDECKS:
+            key = args.d
+            tellang.game = ANKIDECKS[key][0]()
+            tellang.game.deckname = ANKIDECKS[key][1]
+
+        if args.N:
+            tellang.game.deckfilter = 'is:new -is:buried -is:suspended'
+
+        tellang.send_audios(update, context)
 
 def bothelp(update, context):
     """
@@ -641,6 +691,8 @@ def main():
     updater.dispatcher.add_handler(CommandHandler('sync', sync))
     updater.dispatcher.add_handler(
         CommandHandler('ankiaudio', allgame.anki_audio))
+    updater.dispatcher.add_handler(
+        CommandHandler('aa', allgame.anki_audio))
     updater.dispatcher.add_handler(CommandHandler('a', allgame.command))
     updater.dispatcher.add_handler(CommandHandler('list', allgame.listgames))
 
